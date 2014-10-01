@@ -71,6 +71,7 @@ def doit(args):
     run = dataId["run"]
     camcol = dataId["camcol"]
     field = dataId["field"]
+    filterName = dataId["filter"]
     cim.writeFits("image-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
     mask.writeFits("mask-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
     raIm.writeFits("ra-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
