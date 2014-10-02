@@ -1,0 +1,26 @@
+First database investigation:
+  http://postgis.net/documentation
+
+  # To install on OS X
+  sudo port install postgis2
+  sudo port install postgresql93-server
+  sudo mkdir -p /opt/local/var/db/postgresql93/defaultdb
+  sudo chown postgres:postgres /opt/local/var/db/postgresql93/defaultdb
+  sudo su postgres -c '/opt/local/lib/postgresql93/bin/initdb -D /opt/local/var/db/postgresql93/defaultdb' 
+    The files belonging to this database system will be owned by user "postgres".
+    This user must also own the server process.
+    The database cluster will be initialized with locale "en_US.UTF-8".
+    The default database encoding has accordingly been set to "UTF8".
+    The default text search configuration will be set to "english".
+
+    WARNING: enabling "trust" authentication for local connections
+    You can change this by editing pg_hba.conf or using the option -A, or
+    --auth-local and --auth-host, the next time you run initdb.
+
+    Success. You can now start the database server using:
+        /opt/local/lib/postgresql93/bin/postgres -D /opt/local/var/db/postgresql93/defaultdb
+    or
+        /opt/local/lib/postgresql93/bin/pg_ctl -D /opt/local/var/db/postgresql93/defaultdb -l logfile start
+
+
+
