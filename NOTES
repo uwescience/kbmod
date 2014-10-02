@@ -22,5 +22,54 @@ First database investigation:
     or
         /opt/local/lib/postgresql93/bin/pg_ctl -D /opt/local/var/db/postgresql93/defaultdb -l logfile start
 
+    Actually, you need to
+        sudo -u postgres /opt/local/lib/postgresql93/bin/postgres -D /opt/local/var/db/postgresql93/defaultdb
 
+######## Postgres mojo
 
+/opt/local/lib/postgresql93/bin/psql -U postgres
+\? = help
+\dt = show tables
+\l = show databases
+\c postgres = connect to database postgres
+
+create database kbmod;
+\c kbmod
+CREATE EXTENSION postgis; # load postgis spatial extension
+
+I want to use the Geography package since everything is done in angles
+http://postgis.net/docs/manual-2.1/PostGIS_Special_Functions_Index.html#PostGIS_GeographyFunctions
+
+Dates and times
+http://www.postgresql.org/docs/9.1/static/functions-datetime.html
+
+# 1e6
+CREATE TABLE fields ( 
+    fieldId SERIAL PRIMARY KEY,
+    run INTEGER,
+    camcol SMALLINT,
+    field INTEGER,
+    filter VARCHAR(1),
+    bbox GEOGRAPHY(POLYGON,4326),
+    tmid TIMESTAMP,
+    trange TSRANGE
+  );
+# Since I'll be dropping this on and off
+DROP TABLE fields;
+# I expect this is the index I will want to create
+CREATE INDEX fields_gix ON fields USING GIST (bbox);
+# Testing insertion of data
+INSERT INTO fields (run, camcol, field, filter, bbox, tmid, trange) VALUES
+ (100, 1, 148, 'r', ST_GeomFromText('POLYGON((
+    -73.973057 40.764356, -73.981898 40.768094,
+    -73.958209 40.800621, -73.949282 40.796853, -73.973057 40.764356))',4326),
+    '2010-01-01 14:30:30',
+    '[2010-01-01 14:30:00, 2010-01-01 14:31:01]');
+
+# 1e12
+CREATE TABLE pixels ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId INTEGER REFERENCES fields(fieldId),
+    flux GEOGRAPHY(POINTM,4326)
+  );
+DROP TABLE pixels;
