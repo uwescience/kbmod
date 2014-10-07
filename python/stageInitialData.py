@@ -19,9 +19,22 @@ def doit(args):
     mapper = Mapper(root = "/lsst7/stripe82/dr7/runs/", calibRoot = None, outputRoot = None)
     butler = dafPersist.ButlerFactory(mapper = mapper).create()
 
-    # Note: what to do about the 128 pixel overlap?
-    # See python/lsst/obs/sdss/processCcdSdss.py for guidance
+    # Grab science pixels
     im     = butler.get(datasetType="fpC", dataId = dataId).convertF()
+
+    # Remove the 128 pixel duplicate overlap between fields
+    # See python/lsst/obs/sdss/processCcdSdss.py for guidance
+    bbox    = im.getBBox()
+    begin   = bbox.getBegin()
+    extent  = bbox.getDimensions()
+    extent -= afwGeom.Extent2I(0, 128)
+    tbbox   = afwGeom.BoxI(begin, extent)
+    im      = afwImage.ImageF(im, tbbox, True)
+
+    # Remove 1000 count pedestal
+    im    -= 1000.0 
+
+    # Create image variance from gain
     calib, gain = butler.get(datasetType="tsField", dataId = dataId)
     var    = afwImage.ImageF(im, True)
     var   /= gain
@@ -31,7 +44,7 @@ def doit(args):
     #
     # mask   = butler.get(datasetType="fpM", dataId = dataId)
     fpMFile = butler.mapper.map_fpM(dataId = dataId).getLocations()[0]
-    mask   = convertfpM(fpMFile, True)
+    mask    = convertfpM(fpMFile, True)
 
     # Decision point: do I send the convolution a MaskedImage, in which
     # case the mask is also spread, or just an Image, and not spread
@@ -68,6 +81,13 @@ def doit(args):
             raIm.getArray()[y, x] = ra
             decIm.getArray()[y, x] = decl
 
+    # TODO: subtract off background, and scale by afwMath.makeStatistics(image, math::STDEVCLIP);
+    # This will turn the image into "sigma"
+    import pdb; pdb.set_trace()
+    ctrl = afwMath.StatisticsControl(5.0, 5)
+    stat = afwMath.makeStatistics(im, mask, afwMath.STDEVCLIP | afwMath.MEDIAN | afwMath.NPOINTS)
+    idx  = np.where(mask.getArray() == 0)
+
     run = dataId["run"]
     camcol = dataId["camcol"]
     field = dataId["field"]
@@ -91,7 +111,7 @@ if __name__ == "__main__":
             args.append(dId)
 
     print args
-    if False:
+    if True:
         # 1 by 1
         map(doit, args)
     else:
