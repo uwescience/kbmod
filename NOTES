@@ -59,8 +59,8 @@ DROP TABLE fields;
 # I expect this is the index I will want to create
 CREATE INDEX fields_gix ON fields USING GIST (bbox);
 # Testing insertion of data
-INSERT INTO fields (run, camcol, field, filter, bbox, tmid, trange) VALUES
- (100, 1, 148, 'r', ST_GeomFromText('POLYGON((
+INSERT INTO fields (fieldId, run, camcol, field, filter, bbox, tmid, trange) VALUES
+ (2, 100, 1, 148, 'r', ST_GeomFromText('POLYGON((
     -73.973057 40.764356, -73.981898 40.768094,
     -73.958209 40.800621, -73.949282 40.796853, -73.973057 40.764356))',4326),
     '2010-01-01 14:30:30',
@@ -70,6 +70,11 @@ INSERT INTO fields (run, camcol, field, filter, bbox, tmid, trange) VALUES
 CREATE TABLE pixels ( 
     pixelId BIGSERIAL PRIMARY KEY,
     fieldId INTEGER REFERENCES fields(fieldId),
-    flux GEOGRAPHY(POINTM,4326)
+    flux GEOGRAPHY(POINTM,4326),
+    mask INTEGER
   );
 DROP TABLE pixels;
+INSERT INTO pixels (fieldId, flux, mask) VALUES
+ (1, ST_MakePointM(-71.1043443253471, 42.3150676015829, 11.0), 128),
+ (1, ST_MakePointM(-71.1043443253471, 42.3150676015829, 12.0), 128)
+;
