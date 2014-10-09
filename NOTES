@@ -307,3 +307,184 @@ UPDATE 24173622
 Time:    891498.223 ms
 
 ####### So summary, creating the struct on the fly took 1.3 hours, and after ingest 0.85 hours.
+
+Lets build some indices!
+
+CREATE INDEX fields_gix ON fields USING GIST (bbox);
+Time: 178.894 ms
+\d fields
+CREATE INDEX fields_tidx ON fields USING GIST (trange);
+Time: 224.141 ms
+
+CREATE INDEX fieldidx ON pixels (fieldId);
+Time: 183091.407 ms
+
+CREATE INDEX fieldidxtest ON pixelstest (fieldId);
+ERROR:  relation "fieldidx" already exists
+ # INTERESTING, seems like an index is per database, not per table
+CREATE INDEX fieldidxtest ON pixelstest (fieldId);
+Time: 241332.392 ms
+
+########## EXAMPLE QUERY1
+
+kbmod=# SELECT fieldId FROM fields WHERE TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ trange;
+       fieldid       
+---------------------
+ 4689419302083040306
+(1 row)
+
+Time: 0.587 ms
+
+  # VALIDATION
+  kbmod=# select fieldId, tmid from fields;
+         fieldid       |             tmid              
+  ---------------------+-------------------------------
+   4689419302083040306 | 2006-10-28 02:55:13.932192+00
+
+
+########## EXAMPLE QUERY2
+
+SELECT fieldId FROM fields WHERE 
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ trange
+AND
+  ST_INTERSECTS(ST_MakePoint(-42.8471955, 0.7336945), bbox);
+       fieldid       
+---------------------
+ 4689419302083040306
+(1 row)
+
+Time: 0.490 ms
+
+########## EXAMPLE QUERY3
+
+
+
+SELECT p.pixelId, p.ra, p.decl, p.fval, ST_DISTANCE(ST_GeomFromText('POINT(-42.8471955 0.7336945)',4326), ST_Transform(p.radec, 4326)) AS dist FROM
+
+SELECT p.pixelId, p.ra, p.decl, p.fval, ST_DISTANCE(ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),4326), ST_SetSRID(p.radec,4326)) AS dist FROM
+  pixelstest as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(ST_MakePoint(-42.8471955, 0.7336945), f.bbox)
+AND
+ f.fieldId = p.fieldId
+ORDER BY dist
+LIMIT 10;
+
+Time: 7950.380 ms
+ pixelid  |      ra       |    decl     |   fval    |     dist     
+----------+---------------+-------------+-----------+--------------
+ 21726804 | -42.847244263 | 0.733692229 | -0.254187 |  5.433635969
+ 21728822 | -42.847133636 | 0.733692229 | -0.261038 |  6.890685292
+
+########## EXAMPLE QUERY4
+
+SELECT p.pixelId, ST_DISTANCE(ST_MakePoint(-42.8471955, 0.7336945), p.flux) AS dist FROM
+  pixels as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(ST_MakePoint(-42.8471955, 0.7336945), f.bbox)
+AND
+ f.fieldId = p.fieldId
+ORDER BY dist
+LIMIT 10;
+
+ pixelid  |     dist     
+----------+--------------
+ 21726804 |  5.433635969
+ 21728822 |  6.890685292
+
+#### Why is this not in angles?
+
+http://gis.stackexchange.com/questions/76967/what-is-the-unit-used-in-st-distance
+
+  If your data is in srid 4326 and you use geometry type the result will not give any meaning. It is in degrees.
+
+So, strangely it looks like I need to store things in fields as geometry, not geography...
+
+CREATE TABLE pixels2 ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT REFERENCES fields(fieldId),
+    ra DOUBLE PRECISION,
+    decl DOUBLE PRECISION,
+    fval REAL,
+    radec GEOMETRY(POINT,4326),
+    mask INTEGER
+  );
+CREATE INDEX fieldidx2 ON pixels2 (fieldId);
+
+\i /Users/becker/src/github/kbmod/data/pixel2-006504-r5-0146.pgsql
+UPDATE pixels2 SET radec = ST_SetSRID(ST_MakePoint(ra, decl), 4326);
+Time: 97224.161 ms
+
+SELECT p.pixelId, p.ra, p.decl, p.fval, ST_DISTANCE(traj, p.radec) AS dist FROM
+  pixels2 as p,
+  fields as f,
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),4326) as traj
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = p.fieldId
+ORDER BY dist
+LIMIT 10;
+
+ pixelid |      ra       |    decl     |   fval    |         dist         
+---------+---------------+-------------+-----------+----------------------
+  239140 | -42.847244263 | 0.733692229 | -0.254187 | 4.88158540868469e-05
+  241158 | -42.847133636 | 0.733692229 | -0.261038 | 6.19056696632905e-05
+
+### Put the rest in pixels2
+\i /Users/becker/src/github/kbmod/data/pixel2-006474-g5-0143.pgsql
+\i /Users/becker/src/github/kbmod/data/pixel2-006474-i5-0143.pgsql
+\i /Users/becker/src/github/kbmod/data/pixel2-006474-r5-0143.pgsql
+\i /Users/becker/src/github/kbmod/data/pixel2-006484-g5-0144.pgsql
+\i /Users/becker/src/github/kbmod/data/pixel2-006484-i5-0144.pgsql
+\i /Users/becker/src/github/kbmod/data/pixel2-006484-r5-0144.pgsql
+\i /Users/becker/src/github/kbmod/data/pixel2-006504-g5-0146.pgsql
+\i /Users/becker/src/github/kbmod/data/pixel2-006504-i5-0146.pgsql
+
+# Optimizing DB
+
+CREATE TABLE pixels3 ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT REFERENCES fields(fieldId),
+    ra DOUBLE PRECISION,
+    decl DOUBLE PRECISION,
+    fval REAL,
+    radec GEOMETRY(POINT,4326),
+    mask INTEGER
+  );
+
+\i /Users/becker/src/github/kbmod/data/pixel3-006474-g5-0143.pgsql
+
+COPY pixels3 (fieldId, ra, decl, fval, mask) FROM '/Users/becker/src/github/kbmod/data/pixel3-006474-g5-0143.csv' WITH csv;
+
+Old way: Time: 247336.065 ms
+With csv: Time: 70569.376 ms
+
+
+SELECT p.pixelId, p.ra, p.decl, p.fval, ST_DISTANCE(traj, p.radec) AS dist FROM
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),4326) as traj,
+  pixels2 as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = p.fieldId
+ORDER BY dist
+LIMIT 10;
+
+CREATE INDEX tsbbox ON fields (trange, bbox);
+CLUSTER pixels2 USING fieldidx2;
+
+kbmod=# CLUSTER pixels2 USING fieldidx2;
+CLUSTER
+Time: 470051.581 ms
