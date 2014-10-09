@@ -1,3 +1,5 @@
+eScience AWS login
+ https://uwescience.signin.aws.amazon.com/console
 
 /opt/local/lib/postgresql93/bin/psql -U kbmod -h kbmod.czoeuvaufkjq.us-west-2.rds.amazonaws.com -p 5432
  kbmodmaster
