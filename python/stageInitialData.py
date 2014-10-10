@@ -6,6 +6,7 @@ import time
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
+import lsst.meas.algorithms as measAlg
 import lsst.daf.persistence as dafPersist
 import lsst.daf.base as dafBase
 from lsst.obs.sdss import SdssMapper as Mapper
@@ -58,6 +59,9 @@ def doit(args):
     # Remove the 128 pixel duplicate overlap...
     mask    = afwImage.MaskU(mask, tbbox, True)
 
+    # We need this for the background estimation
+    exp = afwImage.ExposureF(afwImage.MaskedImageF(im, mask, var))
+
     # Subtract off background, and scale by stdev
     # This will turn the image into "sigma"
     if False:
@@ -69,16 +73,23 @@ def doit(args):
         ctrl.setAndMask(bitMask)
         stat    = afwMath.makeStatistics(im, mask, afwMath.STDEVCLIP | afwMath.MEDIAN | afwMath.NPOINT, ctrl)
         stdev   = stat.getValue(afwMath.STDEVCLIP)
-        med     = stat.getValue(afwMath.MEDIAN)
-    else:
+        bg      = stat.getValue(afwMath.MEDIAN)
+    elif False:
         # It should be that afwMath.NPOINT = len(idx[0])
         # Not the case, exactly, so go with what you know
         idx     = np.where(mask.getArray() == 0)
         gdata   = im.getArray()[idx] 
-        med     = np.median(gdata)
+        bg      = np.median(gdata)
         stdev   = 0.741 * (np.percentile(gdata, 75) - np.percentile(gdata, 25))
-    im -= med
-    im /= stdev
+    else:
+        # Do full-on background subtraction
+        bgctrl = measAlg.BackgroundConfig(binSize=512, statisticsProperty="MEANCLIP", ignoredPixelMask=mask.getMaskPlaneDict().keys())
+        bg, bgsubexp = measAlg.estimateBackground(exp, bgctrl, subtract=True)
+        im = bgsubexp.getMaskedImage().getImage()
+        sctrl = afwMath.StatisticsControl()
+        sctrl.setAndMask(reduce(lambda x, y, mask=mask: x | mask.getPlaneBitMask(y), bgctrl.ignoredPixelMask, 0x0))
+        stdev = afwMath.makeStatistics(im, mask, afwMath.STDEVCLIP, sctrl).getValue(afwMath.STDEVCLIP)
+        im /= stdev
 
     # Decision point: do I send the convolution a MaskedImage, in which
     # case the mask is also spread, or just an Image, and not spread
@@ -86,7 +97,6 @@ def doit(args):
     # 
     # I think for now I will not spread the mask so that it represents the
     # condition of the underlying pixels, not the Psf-filtered ones
-    # mi     = afwImage.MaskedImageF(im, mask, var)
 
     psf    = butler.get(datasetType="psField", dataId = dataId)
     wcs    = butler.get(datasetType="asTrans", dataId = dataId)
@@ -131,28 +141,23 @@ def doit(args):
         # Magic for the day; 2**63 because BIGINT is signed
         fieldId  = int(md5.new(" ".join(map(str, [run, filterName, camcol, field]))).hexdigest(), 16) % 2**63
 
-        pfile = "pixel-%06d-%s%s-%04d.pgsql" % (run, filterName, camcol, field)
+        pfile = "pixel-%06d-%s%s-%04d.csv" % (run, filterName, camcol, field)
         ffile = "field-%06d-%s%s-%04d.pgsql" % (run, filterName, camcol, field)
         pbuff = open(pfile, "w")
+        p2buff = open(p2file, "w")
         fbuff = open(ffile, "w")
         fbuff.write("INSERT INTO fields (fieldId, run, camcol, field, filter, bbox, tmid, trange) VALUES\n")
         fbuff.write("  (%d, %d, %d, %d, '%s', ST_GeomFromText('POLYGON((\n" % (fieldId, run, camcol, field, filterName))
-        fbuff.write("        %.6f %.6f, %.6f %.6f,\n" % (xll, yll, xlr, ylr))
-        fbuff.write("        %.6f %.6f, %.6f %.6f,\n" % (xur, yur, xul, yul))
-        fbuff.write("        %.6f %.6f))',4326),\n" % (xll, yll))
+        fbuff.write("        %.9f %.9f, %.9f %.9f,\n" % (xll, yll, xlr, ylr))
+        fbuff.write("        %.9f %.9f, %.9f %.9f,\n" % (xur, yur, xul, yul))
+        fbuff.write("        %.9f %.9f))',3786),\n" % (xll, yll))
         fbuff.write("         '%s',\n" % (re.sub("T", " ", tc.toString())))
         fbuff.write("         '[%s, %s]');\n" % (re.sub("T", " ", t0.toString()), re.sub("T", " ", t1.toString())))
 
-        pbuff.write("INSERT INTO pixels (fieldId, flux, mask) VALUES\n")
         for y in range(ny):
             for x in range(nx):
-                if y==ny-1 and x==nx-1:
-                    suffix = ";"
-                else:
-                    suffix = ","
                 # Note the different orders of raIm,decIm and cim,mask
-                pbuff.write("  (%d, ST_MakePointM(%f, %f, %f), %d)%s\n" % (
-                    fieldId, raIm.get(x,y), decIm.get(x,y), cim.get(x,y), mask.get(x,y), suffix))
+                pbuff.write("%d, %.9f, %.9f, %f, %d\n" % (fieldId, raIm.get(x,y), decIm.get(x,y), cim.get(x,y), mask.get(x,y)))
         pbuff.close()
         fbuff.close()
 
