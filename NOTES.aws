@@ -4,6 +4,9 @@ eScience AWS login
 /opt/local/lib/postgresql93/bin/psql -U kbmod -h kbmod.czoeuvaufkjq.us-west-2.rds.amazonaws.com -p 5432
  kbmodmaster
 
+# projection to use?  we need a perfect sphere, not earthly geoid.  i think this is correct:
+ http://spatialreference.org/ref/epsg/3786/
+
 kbmod=> \c kbmod
 kbmod=> CREATE EXTENSION postgis;
 
@@ -14,7 +17,7 @@ CREATE TABLE fields (
     camcol SMALLINT,
     field INTEGER,
     filter VARCHAR(1),
-    bbox GEOGRAPHY(POLYGON,4326),
+    bbox GEOMETRY(POLYGON,3786),
     tmid TIMESTAMP WITH TIME ZONE,
     trange TSTZRANGE
   );
@@ -25,7 +28,7 @@ CREATE TABLE pixels (
     ra DOUBLE PRECISION,
     decl DOUBLE PRECISION,
     fval REAL,
-    radec GEOMETRY(POINT,4326),
+    radec GEOMETRY(POINT,3786),
     mask INTEGER
   );
 
@@ -42,3 +45,18 @@ CREATE TABLE pixels (
 
 \COPY pixels (fieldId, ra, decl, fval, mask) FROM '/Users/becker/src/github/kbmod/data/pixel3-006474-g5-0143.csv' WITH csv;
 Time: 145694.747 ms
+
+UPDATE pixels SET radec = ST_SetSRID(ST_MakePoint(ra, decl), 3786);
+
+SELECT p.pixelId, p.ra, p.decl, p.fval, ST_DISTANCE(traj, p.radec) AS dist FROM
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj,
+  pixels as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-21 03:11:44.69136z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = p.fieldId
+ORDER BY dist
+LIMIT 10;
