@@ -144,7 +144,6 @@ def doit(args):
         pfile = "pixel-%06d-%s%s-%04d.csv" % (run, filterName, camcol, field)
         ffile = "field-%06d-%s%s-%04d.pgsql" % (run, filterName, camcol, field)
         pbuff = open(pfile, "w")
-        p2buff = open(p2file, "w")
         fbuff = open(ffile, "w")
         fbuff.write("INSERT INTO fields (fieldId, run, camcol, field, filter, bbox, tmid, trange) VALUES\n")
         fbuff.write("  (%d, %d, %d, %d, '%s', ST_GeomFromText('POLYGON((\n" % (fieldId, run, camcol, field, filterName))
@@ -161,18 +160,28 @@ def doit(args):
         pbuff.close()
         fbuff.close()
 
-    cim.writeFits("image-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
-    mask.writeFits("mask-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
-    raIm.writeFits("ra-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
-    decIm.writeFits("dec-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
+    if False:
+        cim.writeFits("image-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
+        mask.writeFits("mask-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
+        raIm.writeFits("ra-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
+        decIm.writeFits("dec-%06d-%s%s-%04d.fits" % (run, filterName, camcol, field))
 
 
 if __name__ == "__main__":
-    args = []
-    dataIds = [{"run": 6474, "camcol": 5, "field": 143},
-               {"run": 6484, "camcol": 5, "field": 144},
-               {"run": 6504, "camcol": 5, "field": 146}]
+    if False:
+        dataIds = [{"run": 6474, "camcol": 5, "field": 143},
+                   {"run": 6484, "camcol": 5, "field": 144},
+                   {"run": 6504, "camcol": 5, "field": 146}]
+    else:  
+        dataIds = []
+        infile = sys.argv[1]
+        for line in open(infile).readlines():
+            if line.startswith('#'):
+                continue
+            fields = line.split()
+            dataIds.append({"run": int(fields[0]), "camcol": int(fields[1]), "field": int(fields[2])})
 
+    args = []
     for dataId in dataIds:
         for filterName in ["g", "r", "i"]:
             dId = dataId.copy()
@@ -180,7 +189,7 @@ if __name__ == "__main__":
             args.append(dId)
 
     print args
-    if True:
+    if False:
         # 1 by 1
         map(doit, args)
     else:
