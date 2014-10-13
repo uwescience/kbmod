@@ -1,0 +1,14 @@
+Lots of discussion on this at:
+
+  https://github.com/uwescience/kbmod/issues/1
+
+I am trying to recreate a WCS object outside of LSST-land.  I can grab
+the distorton matrices and make these numpy arrays, but I think we
+will ultimately end up with a dependency on wcslib:
+
+Since I am prototyping in Python, use this package to see if I can get
+around the crux of the issue, wcss2p
+
+  https://pypi.python.org/pypi/pywcs
+
+
