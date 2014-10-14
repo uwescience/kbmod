@@ -22,8 +22,13 @@ CREATE TABLE fields (
     trange TSTZRANGE
   );
 
-CREATE INDEX bboxidx ON fields USING GIST (bbox);
-CREATE INDEX trangeidx ON fields USING GIST (trange);
+kbmod=> CREATE INDEX bboxidx ON fields USING GIST (bbox);
+CREATE INDEX
+Time: 837.611 ms
+
+kbmod=> CREATE INDEX trangeidx ON fields USING GIST (trange);
+CREATE INDEX
+Time: 1466.194 ms
 
 CREATE TABLE pixels ( 
     pixelId BIGSERIAL PRIMARY KEY,
@@ -59,3 +64,36 @@ AND
  f.fieldId = p.fieldId
 ORDER BY dist
 LIMIT 10;
+
+# My copy command is failing with:
+kbmod=> \COPY pixels (fieldId, ra, decl, fval, mask) FROM '/local/acbecker/kbmod/batch1g.pixel.2000000000' CSV
+connection not open
+
+Guess I'll split up the file
+
+kbmod=> \COPY pixels (fieldId, ra, decl, fval, mask) FROM '/local/acbecker/kbmod/splitaa' CSV
+Time: 10935818.684 ms
+
+kbmod=> \COPY pixels (fieldId, ra, decl, fval, mask) FROM '/local/acbecker/kbmod/splitab' CSV
+Time: 12645660.830 ms
+
+kbmod=> \COPY pixels (fieldId, ra, decl, fval, mask) FROM '/local/acbecker/kbmod/splitac' CSV
+Time: 11001749.630 ms
+
+kbmod=> CREATE INDEX fieldidx ON pixels (fieldId);
+CREATE INDEX
+Time: 8908890.649 ms
+
+strangely:
+kbmod=> explain select count(*) from (select distinct fieldId from pixels) X;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Aggregate  (cost=19138399.42..19138399.43 rows=1 width=0)
+   ->  HashAggregate  (cost=19138399.40..19138399.41 rows=1 width=8)
+         ->  Seq Scan on pixels  (cost=0.00..17631684.52 rows=602685952 width=8)
+(3 rows)
+
+does not use index.  perhaps we have not declared that fieldId is not null?
+
+alter table pixels alter column fieldid set not null;
+
