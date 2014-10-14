@@ -488,3 +488,81 @@ CLUSTER pixels2 USING fieldidx2;
 kbmod=# CLUSTER pixels2 USING fieldidx2;
 CLUSTER
 Time: 470051.581 ms
+
+
+
+# Another way to look at this:
+
+CREATE TABLE fields ( 
+    fieldId BIGINT PRIMARY KEY,
+    run INTEGER,
+    camcol SMALLINT,
+    field INTEGER,
+    filter VARCHAR(1),
+    tmid TIMESTAMP WITH TIME ZONE,
+    trange TSTZRANGE
+  );
+
+CREATE TABLE xxx ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT REFERENCES fields(fieldId),
+    ll_r DOUBLE PRECISION,
+    ll_d DOUBLE PRECISION,
+    lr_r DOUBLE PRECISION,
+    lr_d DOUBLE PRECISION,
+    ur_r DOUBLE PRECISION,
+    ur_d DOUBLE PRECISION,
+    ul_r DOUBLE PRECISION,
+    ul_d DOUBLE PRECISION,
+    bbox GEOMETRY(POLYGON,3786),
+    flux REAL,
+    mask INTEGER
+  );
+
+UPDATE xxx SET bbox = ST_SetSRID(ST_MakePolygon(ST_MakeLine(ARRAY[ST_MakePoint(ll_r,ll_d), ST_MakePoint(lr_r,lr_d),
+                                                                  ST_MakePoint(ur_r,ur_d), ST_MakePoint(ul_r,ul_d),
+                                                                  ST_MakePoint(ll_r,ll_d)])), 3786);
+
+
+SELECT p.pixelId, ST_AsText(ST_Centroid(p.bbox)), p.flux FROM
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj,
+  xxx as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, p.bbox)
+AND
+  f.fieldId = p.fieldId;
+
+# OR
+SELECT p.pixelId, ST_AsText(ST_Centroid(p.bbox)), p.flux FROM
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj,
+  xxx as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+  ST_INTERSECTS(traj, p.bbox)
+AND
+  f.fieldId = p.fieldId;
+
+
+SELECT 
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj,
+  (fieldId FROM fields as f
+    WHERE
+      TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+    AND
+      ST_INTERSECTS(traj, f.bbox)
+  ) as fieldId, 
+  p.pixelId, ST_AsText(ST_Centroid(p.bbox)), p.flux
+FROM 
+  pixels as p
+WHERE
+  p.fieldId = fieldId
+AND
+  ST_INTERSECTS(traj, p.bbox);
+
