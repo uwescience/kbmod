@@ -96,4 +96,50 @@ kbmod=> explain select count(*) from (select distinct fieldId from pixels) X;
 does not use index.  perhaps we have not declared that fieldId is not null?
 
 alter table pixels alter column fieldid set not null;
+Time: 2602383.651 ms
 
+
+########## TESTING OF PIXELS TABLES
+
+
+CREATE TABLE pixels ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT REFERENCES fields(fieldId),
+    pidx INTEGER,
+    ra DOUBLE PRECISION,
+    decl DOUBLE PRECISION,
+    radec GEOMETRY(POINT,3786),
+    fval REAL,
+    mask INTEGER
+  );
+
+CREATE TABLE pixels2 ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT REFERENCES fields(fieldId),
+    pidx INTEGER,
+    ll_r DOUBLE PRECISION,
+    ll_d DOUBLE PRECISION,
+    lr_r DOUBLE PRECISION,
+    lr_d DOUBLE PRECISION,
+    ur_r DOUBLE PRECISION,
+    ur_d DOUBLE PRECISION,
+    ul_r DOUBLE PRECISION,
+    ul_d DOUBLE PRECISION,
+    bbox GEOMETRY(POLYGON,3786),
+    fval REAL,
+    mask INTEGER
+  );
+
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/local/acbecker/kbmod/batch3.pixel' CSV
+\COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/local/acbecker/kbmod/batch3.pixel2' CSV
+Time: 22685042.021 ms
+
+UPDATE pixels SET radec = ST_SetSRID(ST_MakePoint(ra, decl), 3786);
+UPDATE 268595800
+Time: 11833705.886 ms
+
+
+UPDATE pixels2 SET bbox = ST_SetSRID(ST_MakePolygon(ST_MakeLine(ARRAY[ST_MakePoint(ll_r,ll_d), ST_MakePoint(lr_r,lr_d),
+                                                                      ST_MakePoint(ur_r,ur_d), ST_MakePoint(ul_r,ul_d),
+                                                                      ST_MakePoint(ll_r,ll_d)])), 3786);
+Time: 17775121.706 ms

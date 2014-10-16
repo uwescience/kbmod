@@ -506,6 +506,7 @@ CREATE TABLE fields (
 CREATE TABLE xxx ( 
     pixelId BIGSERIAL PRIMARY KEY,
     fieldId BIGINT REFERENCES fields(fieldId),
+    pidx INTEGER,
     ll_r DOUBLE PRECISION,
     ll_d DOUBLE PRECISION,
     lr_r DOUBLE PRECISION,
