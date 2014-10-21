@@ -143,3 +143,156 @@ UPDATE pixels2 SET bbox = ST_SetSRID(ST_MakePolygon(ST_MakeLine(ARRAY[ST_MakePoi
                                                                       ST_MakePoint(ur_r,ur_d), ST_MakePoint(ul_r,ul_d),
                                                                       ST_MakePoint(ll_r,ll_d)])), 3786);
 Time: 17775121.706 ms
+
+CREATE INDEX fieldidx ON pixels (fieldId);
+CREATE INDEX fieldidx2 ON pixels2 (fieldId);
+
+CREATE INDEX pradecidx ON pixels USING GIST (radec);
+CREATE INDEX pbboxidx ON pixels2 USING GIST (bbox);
+
+--A--
+
+explain SELECT p.pixelId, p.ra, p.decl, p.fval, ST_DISTANCE(traj, p.radec) AS dist FROM
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),4326) as traj,
+  pixels as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = p.fieldId
+ORDER BY dist;
+
+ Sort  (cost=16428230.74..16428281.03 rows=20116 width=92)
+   Sort Key: (st_distance(traj.traj, p.radec))
+   ->  Nested Loop  (cost=8.31..16425760.34 rows=20116 width=92)
+         Join Filter: ((traj.traj && f.bbox) AND _st_intersects(traj.traj, f.bbox))
+         ->  Function Scan on traj  (cost=0.00..0.01 rows=1 width=32)
+         ->  Hash Join  (cost=8.31..16415450.88 rows=20116 width=180)
+               Hash Cond: (p.fieldid = f.fieldid)
+               ->  Seq Scan on pixels p  (cost=0.00..13749944.21 rows=710745921 width=68)
+               ->  Hash  (cost=8.29..8.29 rows=1 width=128)
+                     ->  Index Scan using trangeidx on fields f  (cost=0.28..8.29 rows=1 width=128)
+                           Index Cond: ('2006-10-28 02:55:13.932192+00'::timestamp with time zone <@ trange)
+
+--B--
+
+explain SELECT p.pixelId, ST_AsText(ST_Centroid(p.bbox)), p.fval FROM
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj,
+  pixels2 as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+  ST_INTERSECTS(traj, p.bbox)
+AND
+  f.fieldId = p.fieldId;
+
+ Nested Loop  (cost=8.31..23073856.17 rows=1 width=44)
+   Join Filter: ((traj.traj && p.bbox) AND (traj.traj && f.bbox) AND _st_intersects(traj.traj, p.bbox) AND _st_intersects(traj.traj, f.bbox))
+   ->  Function Scan on traj  (cost=0.00..0.01 rows=1 width=32)
+   ->  Hash Join  (cost=8.31..23062704.35 rows=21654 width=164)
+         Hash Cond: (p.fieldid = f.fieldid)
+         ->  Seq Scan on pixels2 p  (cost=0.00..20193387.91 rows=765091091 width=52)
+         ->  Hash  (cost=8.29..8.29 rows=1 width=128)
+               ->  Index Scan using trangeidx on fields f  (cost=0.28..8.29 rows=1 width=128)
+                     Index Cond: ('2006-10-28 02:55:13.932192+00'::timestamp with time zone <@ trange)
+
+--C--
+
+explain SELECT 
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj,
+  (SELECT fieldId FROM fields as f,
+      ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj
+    WHERE
+      TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+    AND
+      ST_INTERSECTS(traj, f.bbox)
+  ) as fieldId, 
+  p.pixelId, ST_AsText(ST_Centroid(p.bbox)), p.fval
+FROM 
+  pixels2 as p
+WHERE
+  p.fieldId = fieldId;
+
+AND
+  ST_INTERSECTS(traj, p.bbox);
+
+
+####### SETTING UP EC2 INSTANCE
+
+t2.small
+
+https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#Instances:search=i-b21cf2be;sort=instanceId
+
+chmod 400 ~/.ssh/acbecker_aws.pem
+ssh -i ~/.ssh/acbecker_aws.pem ec2-user@54.69.147.16
+
+# INSTALL AND START THE DATABASE
+sudo yum update 
+sudo yum install tcsh.x86_64 
+sudo chsh ec2-user
+  /bin/tcsh
+sudo yum install postgresql93.x86_64 postgresql93-server.x86_64 
+sudo yum install postgresql93.x86_64 postgresql93-server.x86_64 postgresql93-contrib.x86_64 postgresql93-devel.x86_64
+
+
+  # Where is the default database location?
+  sudo -u postgres ls /var/lib/pgsql93/
+
+sudo mkdir -p /var/lib/pgsql93/defaultdb
+sudo chown postgres:postgres /var/lib/pgsql93/defaultdb
+sudo su postgres -c '/usr/bin/initdb93 -D /var/lib/pgsql93/defaultdb' 
+sudo -u postgres /usr/bin/postgres -D /var/lib/pgsql93/defaultdb
+
+psql93 -U postgres
+create database kbmod;
+\c kbmod
+CREATE EXTENSION postgis;
+ERROR:  could not open extension control file "/usr/share/pgsql93/extension/postgis.control": No such file or directory
+
+# This could be a bad idea
+# http://www.postgresonline.com/journal/archives/329-An-almost-idiots-guide-to-install-PostgreSQL-9.3,-PostGIS-2.1-and-pgRouting-with-Yum.html
+ sudo rpm -ivh http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm 
+# DID NOT WORK
+
+sudo yum install gcc make gcc-c++ libtool libxml2-devel libpng libtiff
+sudo yum install geos-devel.x86_64 
+sudo yum install json-c-devel.x86_64
+
+# Proj.4 
+cd ~/src
+wget http://download.osgeo.org/proj/proj-4.8.0.tar.gz
+tar xzf proj-4.8.0.tar.gz
+cd proj-4.8.0
+./configure
+make
+sudo make install
+
+# GDAL
+cd ~/src
+wget http://download.osgeo.org/gdal/1.10.1/gdal-1.10.1.tar.gz
+tar -xvzf gdal-1.10.1.tar.gz
+cd gdal-1.10.1
+./configure
+make
+sudo make install
+
+# PostGIS 
+cd ~/src
+wget http://download.osgeo.org/postgis/source/postgis-2.1.4.tar.gz
+tar -xvzf postgis-2.1.4.tar.gz
+cd postgis-2.1.4
+./configure --with-pgconfig=/usr/bin/pg_config93
+make
+make install
+
+sudo vi /etc/ld.so.conf
+ # add /usr/local/lib so that postgres can see the things I've install manually above
+sudo ldconfig
+
+# NOW I CAN:
+kbmod=# CREATE EXTENSION postgis;
