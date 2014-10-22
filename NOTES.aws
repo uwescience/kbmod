@@ -144,6 +144,22 @@ UPDATE pixels2 SET bbox = ST_SetSRID(ST_MakePolygon(ST_MakeLine(ARRAY[ST_MakePoi
                                                                       ST_MakePoint(ll_r,ll_d)])), 3786);
 Time: 17775121.706 ms
 
+
+kbmod=> CREATE INDEX fieldidx ON pixels (fieldId);
+CREATE INDEX
+Time: 10559253.004 ms
+
+kbmod=> CREATE INDEX fieldidx2 ON pixels2 (fieldId);
+CREATE INDEX
+Time: 8371265.872 ms
+
+kbmod=> CREATE INDEX pradecidx ON pixels USING GIST (radec);
+CREATE INDEX
+Time: 16198041.883 ms
+
+kbmod=> CREATE INDEX pbboxidx ON pixels2 USING GIST (bbox);
+CREATE INDEX
+Time: 16310668.184 ms
 CREATE INDEX fieldidx ON pixels (fieldId);
 CREATE INDEX fieldidx2 ON pixels2 (fieldId);
 
