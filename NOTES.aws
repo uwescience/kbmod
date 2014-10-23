@@ -374,3 +374,111 @@ Custom TCP rule, protocol=TCP, port=5432
  	TCP/IP connections on port 5432?
 
 # Might need to tell postgres to listen to the open port..?
+
+Anyways, access locked up after a day of copy.  Could not ssh in.  I ctrl-Z my server screen window and tried
+to run top and got:
+  No more processes.
+
+Can only run built in commands...  E.g. echo, cd, etc...
+ unlimit maxproc?
+
+Just froze.  Reboot.  Upgrade to a m3.medium and restart from AWS console (use right click)
+  ip address is now 54.191.82.210
+Had to sudo yum update
+
+# So how did I run out of processes..!?!?!?
+[ec2-user@ip-172-30-0-178 ~]$ limit
+cputime      unlimited
+filesize     unlimited
+datasize     unlimited
+stacksize    8192 kbytes
+coredumpsize 0 kbytes
+memoryuse    unlimited
+vmemoryuse   unlimited
+descriptors  1024 
+memorylocked 64 kbytes
+maxproc      30019 
+
+Clue?
+  Swap:        0k total
+
+ALTER USER Postgres WITH PASSWORD 'kbmod';
+
+postgres=# show config_file;
+                config_file                 
+--------------------------------------------
+ /var/lib/pgsql93/defaultdb/postgresql.conf
+
+
+# TUNE HOST
+http://samiux.wordpress.com/2009/07/26/howto-performance-tuning-for-postgresql-on-ubuntudebian/
+
+  listen_addresses = '*'      # what IP address(es) to listen on;
+  port = 5432       # (change requires restart)
+  max_connections = 100     # (change requires restart)
+  shared_buffers = 2GB      # min 128kB
+  work_mem = 400MB      # min 64kB
+  max_stack_depth = 6MB     # min 100kB
+  wal_buffers = 8MB     # min 32kB, -1 sets based on shared_buffers
+  checkpoint_segments = 16    # in logfile segments, min 1, 16MB each
+  checkpoint_completion_target = 0.9  # checkpoint target duration, 0.0 - 1.0
+  effective_cache_size = 2GB
+  logging_collector = on      # Enable capturing of stderr and csvlog
+  log_filename = 'postgresql-%a.log'  # log file name pattern,
+  log_truncate_on_rotation = on   # If on, an existing log file with the
+  log_rotation_age = 1d     # Automatic rotation of logfiles will
+  log_rotation_size = 0     # Automatic rotation of logfiles will
+  log_timezone = 'UTC'
+  datestyle = 'iso, mdy'
+  timezone = 'UTC'
+  lc_messages = 'en_US.UTF-8'     # locale for system error message
+  lc_monetary = 'en_US.UTF-8'     # locale for monetary formatting
+  lc_numeric = 'en_US.UTF-8'      # locale for number formatting
+  lc_time = 'en_US.UTF-8'       # locale for time formatting
+  default_text_search_config = 'pg_catalog.english'
+
+Check with 
+  select name,setting from pg_settings;
+
+  """
+  By default, PostgreSQL only responds to connections from the local host. If you want your server to be accessible from other systems via standard TCP/IP networking, you need to change listen_addresses from its default. The usual approach is to set it to listen to all addresses like this:
+
+  listen_addresses = '*'
+
+  And then control who can and can connect via the pg_hba.conf file. 
+  """
+
+> vi /var/lib/pgsql93/defaultdb/pg_hba.conf
+# TYPE  DATABASE        USER            CIDR-ADDRESS            METHOD
+# "local" is for Unix domain socket connections only
+local   all             postgres                                trust
+# IPv4 local connections:
+host    all             power_user      0.0.0.0/0               md5  
+host    all             other_user      0.0.0.0/0               md5 
+# IPv6 local connections:
+host    all             all             ::1/128                 md5
+
+# Can I connect?
+psql93 -U postgres -h 54.191.82.210 -p 5432
+Password for user postgres:
+
+This line was necessary:
+host    all             postgres             0.0.0.0/0            md5
+
+######### INSTALL WCSLIB FOR UDF
+cd ~/src
+wget ftp://heasarc.gsfc.nasa.gov/software/fitsio/c/cfitsio3370.tar.gz
+tar -xvzf cfitsio3370.tar.gz
+cd cfitsio
+./configure --prefix=/usr/local/
+make
+sudo make install
+
+cd ~/src
+wget ftp://ftp.atnf.csiro.au/pub/software/wcslib/wcslib.tar.bz2
+tar -xvjf wcslib.tar.bz2
+cd wcslib-4.24/
+./configure
+make
+sudo make install
+
