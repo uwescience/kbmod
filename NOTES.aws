@@ -465,6 +465,58 @@ Password for user postgres:
 This line was necessary:
 host    all             postgres             0.0.0.0/0            md5
 
+# We are just maxing out memory...  Chop down the file size...
+
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaa' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelab' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelac' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelad' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelae' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaf' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelag' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelah' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelai' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaj' CSV
+
+# What is this doing!?
+kbmod=# \COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaa' CSV
+^CCancel request sent
+ERROR:  canceling statement due to user request
+CONTEXT:  SQL statement "SELECT 1 FROM ONLY "public"."fields" x WHERE "fieldid" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x"
+
+
+
+kbmod=# COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaa' CSV;
+ERROR:  could not open file "/home/ec2-user/data/pixelaa" for reading: Permission denied
+
+cd ../
+chmod a+rx .
+
+# Postgres's COPY comes in two separate variants, COPY and \COPY: COPY is server based, \COPY is client based. 
+kbmod=# COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaa' CSV;
+
+# What is taking up all the mem?
+ 9548 postgres  20   0 2368m 2.1g 2.1g R 80.1 57.3  74:51.68 postgres                                                                                                
+ 9793 postgres  20   0 2313m 658m 639m S  6.2 17.5   5:12.89 postgres                                                                                                
+ 9534 postgres  20   0 2298m 2.0g 2.0g S  0.7 55.5   0:24.07 postgres                                                                                                
+
+4 S root      9529  2250  0  80   0 - 45558 poll_s 00:17 pts/0    00:00:00 sudo -u postgres /usr/bin/postgres -D /var/lib/pgsql93/defaultdb
+4 S postgres  9530  9529  0  80   0 - 587487 poll_s 00:17 pts/0   00:00:00 /usr/bin/postgres -D /var/lib/pgsql93/defaultdb
+1 S postgres  9532  9530  0  80   0 - 46812 poll_s 00:18 ?        00:00:00 postgres: logger process                       
+1 S postgres  9534  9530  0  80   0 - 588398 poll_s 00:18 ?       00:00:23 postgres: checkpointer process                 
+1 S postgres  9535  9530  0  80   0 - 587744 poll_s 00:18 ?       00:00:12 postgres: writer process                       
+1 D postgres  9536  9530  0  80   0 - 587744 sleep_ 00:18 ?       00:00:47 postgres: wal writer process                   
+1 S postgres  9537  9530  0  80   0 - 587922 poll_s 00:18 ?       00:00:00 postgres: autovacuum launcher process          
+1 S postgres  9538  9530  0  80   0 - 47370 poll_s 00:18 ?        00:00:01 postgres: stats collector process              
+0 S ec2-user  9546  2359  0  80   0 - 44489 poll_s 00:19 pts/1    00:00:38 psql93 -U postgres
+1 R postgres  9548  9530 43  80   0 - 602816 ?     00:19 ?        01:14:36 postgres: postgres kbmod [local] COPY          
+1 S postgres  9793  9530  5  80   0 - 592147 poll_s 01:28 ?       00:05:11 postgres: autovacuum worker process   kbmod    
+0 S ec2-user 10166  2425  0  80   0 - 27571 pipe_w 03:10 pts/3    00:00:00 grep postgres
+
+9548 = copy
+9793 = autovacuum worker process
+9534 = checkpointer process
+
 ######### INSTALL WCSLIB FOR UDF
 cd ~/src
 wget ftp://heasarc.gsfc.nasa.gov/software/fitsio/c/cfitsio3370.tar.gz
