@@ -550,6 +550,15 @@ Fine.  Am setting
 
 in /var/lib/pgsql93/defaultdb/postgresql.conf
 
+READ THIS CAREFULLY REGARDING INGEST:
+http://www.postgresql.org/docs/9.1/static/populate.html
+
+14.4.4. Remove Foreign Key Constraints:
+  it may be necessary, not just desirable, to drop and re-apply foreign keys when loading large amounts of data.
+
+ALTER TABLE pixels ADD CONSTRAINT "pixels_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+
+
 ######### INSTALL WCSLIB FOR UDF
 cd ~/src
 wget ftp://heasarc.gsfc.nasa.gov/software/fitsio/c/cfitsio3370.tar.gz
