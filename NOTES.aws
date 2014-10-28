@@ -496,9 +496,9 @@ chmod a+rx .
 kbmod=# COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaa' CSV;
 
 # What is taking up all the mem?
- 9548 postgres  20   0 2368m 2.1g 2.1g R 80.1 57.3  74:51.68 postgres                                                                                                
- 9793 postgres  20   0 2313m 658m 639m S  6.2 17.5   5:12.89 postgres                                                                                                
- 9534 postgres  20   0 2298m 2.0g 2.0g S  0.7 55.5   0:24.07 postgres                                                                                                
+ 9548 postgres  20   0 2368m 2.1g 2.1g R 80.1 57.3  74:51.68 postgres
+ 9793 postgres  20   0 2313m 658m 639m S  6.2 17.5   5:12.89 postgres
+ 9534 postgres  20   0 2298m 2.0g 2.0g S  0.7 55.5   0:24.07 postgres
 
 4 S root      9529  2250  0  80   0 - 45558 poll_s 00:17 pts/0    00:00:00 sudo -u postgres /usr/bin/postgres -D /var/lib/pgsql93/defaultdb
 4 S postgres  9530  9529  0  80   0 - 587487 poll_s 00:17 pts/0   00:00:00 /usr/bin/postgres -D /var/lib/pgsql93/defaultdb
@@ -517,6 +517,39 @@ kbmod=# COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/d
 9793 = autovacuum worker process
 9534 = checkpointer process
 
+kbmod=# \COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaj' CSV
+Time: 1165940.300 ms
+
+\COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2aa' CSV
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ab' CSV;
+
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ac' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ad' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ae' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ag' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ag' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ah' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ai' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2aj' CSV;
+
+# Timing looks about the same...
+kbmod=# \COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2aa' CSV
+Time: 1319437.606 ms
+kbmod=# COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ab' CSV;
+COPY 26859580
+Time: 1277357.302 ms
+
+# Autovacuum takes up tons of mem.  This says:
+https://wiki.postgresql.org/wiki/Tuning_Your_PostgreSQL_Server
+
+"it's acceptable to disable autovacuum for short periods of time, for instance when bulk loading large amounts of data."
+
+Fine.  Am setting
+
+  autovacuum = off 
+
+in /var/lib/pgsql93/defaultdb/postgresql.conf
+
 READ THIS CAREFULLY REGARDING INGEST:
 http://www.postgresql.org/docs/9.1/static/populate.html
 
@@ -524,6 +557,7 @@ http://www.postgresql.org/docs/9.1/static/populate.html
   it may be necessary, not just desirable, to drop and re-apply foreign keys when loading large amounts of data.
 
 ALTER TABLE pixels ADD CONSTRAINT "pixels_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+
 
 ######### INSTALL WCSLIB FOR UDF
 cd ~/src
