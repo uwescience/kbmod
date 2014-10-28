@@ -27,6 +27,7 @@ UPDATE pixels SET radec = ST_SetSRID(ST_MakePoint(ra, decl), 3786);
 CREATE INDEX fieldidx ON pixels (fieldId);
 CREATE INDEX radecidx ON pixels USING GIST (radec);
 ALTER TABLE pixels ADD CONSTRAINT "pixels_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+CREATE INDEX pidxidx ON pixels (pidx);
 
 ####
 
@@ -52,6 +53,7 @@ UPDATE pixels2 SET bbox = ST_SetSRID(ST_MakePolygon(ST_MakeLine(ARRAY[ST_MakePoi
 CREATE INDEX fieldidx2 ON pixels2 (fieldId);
 CREATE INDEX bboxidx ON pixels2 USING GIST (bbox);
 ALTER TABLE pixels2 ADD CONSTRAINT "pixels2_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+CREATE INDEX pidxidx2 ON pixels2 (pidx);
 
 ####
 
@@ -62,5 +64,6 @@ CREATE TABLE pixels3 (
     fval REAL,
     mask INTEGER
 );
-CREATE INDEX fieldidx3 ON pixels3 (fieldId);
 ALTER TABLE pixels3 ADD CONSTRAINT "pixels3_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+CREATE INDEX fieldidx3 ON pixels3 (fieldId);
+CREATE INDEX pidxidx3 ON pixels3 (pidx);

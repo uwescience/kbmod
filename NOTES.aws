@@ -558,6 +558,10 @@ http://www.postgresql.org/docs/9.1/static/populate.html
 
 ALTER TABLE pixels ADD CONSTRAINT "pixels_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
 
+Anyways, lets create a minimal table pixels3 for quick queries
+
+CREATE TABLE pixels3 AS SELECT pixelId, fieldId, pidx, fval, mask FROM pixels2;
+ALTER TABLE pixels3 ADD PRIMARY KEY (pixelId);
 
 ######### INSTALL WCSLIB FOR UDF
 cd ~/src
