@@ -245,7 +245,7 @@ t2.small
 https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#Instances:search=i-b21cf2be;sort=instanceId
 
 chmod 400 ~/.ssh/acbecker_aws.pem
-ssh -i ~/.ssh/acbecker_aws.pem ec2-user@54.69.147.16
+ssh -i ~/.ssh/acbecker_aws.pem ec2-user@54.191.82.210
 
 # INSTALL AND START THE DATABASE
 sudo yum update 
