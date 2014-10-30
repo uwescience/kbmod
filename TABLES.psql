@@ -51,7 +51,7 @@ UPDATE pixels2 SET bbox = ST_SetSRID(ST_MakePolygon(ST_MakeLine(ARRAY[ST_MakePoi
                                                                       ST_MakePoint(ur_r,ur_d), ST_MakePoint(ul_r,ul_d),
                                                                       ST_MakePoint(ll_r,ll_d)])), 3786);
 CREATE INDEX fieldidx2 ON pixels2 (fieldId);
-CREATE INDEX bboxidx ON pixels2 USING GIST (bbox);
+CREATE INDEX bboxidx2 ON pixels2 USING GIST (bbox);
 ALTER TABLE pixels2 ADD CONSTRAINT "pixels2_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
 CREATE INDEX pidxidx2 ON pixels2 (pidx);
 
