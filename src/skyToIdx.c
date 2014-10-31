@@ -1,6 +1,7 @@
-#include <stdio.h>
-#include "wcslib/wcs.h"
 #include "postgres.h"
+#include <stdio.h>
+#include <string.h>
+#include "wcslib/wcs.h"
 #include "fmgr.h"
 #include "executor/executor.h"  /* for GetAttributeByName() */
 
@@ -16,6 +17,19 @@ cc -shared -lwcs -L/opt/local/lib -o skyToIdx.so skyToIdx.o
 
  # OS X
 cc -bundle -flat_namespace -undefined suppress -lwcs -L/opt/local/lib -o skyToIdx.so skyToIdx.o
+
+ # To install in DB
+ CREATE OR REPLACE FUNCTION c_skyToIdx(wcs, double precision, double precision) RETURNS integer
+     AS '/Users/acbecker/src/github/kbmod/src/skyToIdx', 'c_skyToIdx'
+     LANGUAGE C STRICT;
+
+DROP FUNCTION c_skyToIdx(wcs, double precision, double precision);
+
+\df+ c_skyToIdx;
+
+ CREATE OR REPLACE FUNCTION hello(TEXT) RETURNS TEXT
+     AS '/Users/acbecker/src/github/kbmod/src/skyToIdx', 'hello'
+     LANGUAGE C STRICT;
 */
 
 #ifdef PG_MODULE_MAGIC
@@ -41,34 +55,43 @@ double* polyElements(int const order, double const value)
 Datum
 c_skyToIdx(PG_FUNCTION_ARGS)
 {
-    HeapTupleHeader  t = PG_GETARG_HEAPTUPLEHEADER(0);
+    HeapTupleHeader t = PG_GETARG_HEAPTUPLEHEADER(0);
     bool isNull;
-    double ra = PG_GETARG_FLOAT8(0);
-    double decl = PG_GETARG_FLOAT8(1);
-
+    double ra = PG_GETARG_FLOAT8(1);
+    double decl = PG_GETARG_FLOAT8(2);
+    
     /* Constants */
-    int sipOrder=4;
+    int sipOrder=5;
     int nPixX=2048;
     int lsstToFitsPixels=+1;
     int fitsToLsstPixels=-1;
     //The amount of space allocated to strings in wcslib
     const int STRLEN = 72;
-
+    
     /* Set up the Wcs struct */
-    double CRPIX1 = DatumGetFloat8(GetAttributeByName(t, "CRPIX1", &isNull));
-    double CRPIX2 = DatumGetFloat8(GetAttributeByName(t, "CRPIX2", &isNull));
+    double CRPIX1 = DatumGetFloat8(GetAttributeByName(t, "crpix1", &isNull));
+    double CRPIX2 = DatumGetFloat8(GetAttributeByName(t, "crpix2", &isNull));
+    fprintf(stderr, "CAW %f %f \n", CRPIX1, CRPIX2);
+
     struct wcsprm* wcsInfo; // defined in wcs.h
     wcsInfo = palloc(sizeof(struct wcsprm));
     wcsInfo->flag = -1;
     int status = wcsini(true, 2, wcsInfo); 
-    wcsInfo->crval[0] = DatumGetFloat8(GetAttributeByName(t, "CRVAL1", &isNull)); 
-    wcsInfo->crval[1] = DatumGetFloat8(GetAttributeByName(t, "CRVAL2", &isNull)); 
-    wcsInfo->crpix[0] = CRPIX1 + lsstToFitsPixels;
-    wcsInfo->crpix[1] = CRPIX2 + lsstToFitsPixels;
-    char strCd[5];
+    wcsInfo->crval[0] = DatumGetFloat8(GetAttributeByName(t, "crval1", &isNull)); 
+    wcsInfo->crval[1] = DatumGetFloat8(GetAttributeByName(t, "crval2", &isNull)); 
+    // NOTE: if we are getting these from LSST, there has already been a compensataion for 
+    //  pixel addressing convetions, i.e. lsstToFitsPixels
+    // See e.g. Wcs::initWcsLib in afw/src/image/Wcs.cc where they initialize with an
+    //  external crpix and do e.g.
+    //  _wcsInfo->crpix[0] = crpix.getX() + lsstToFitsPixels;
+    // I don't believe we need that here
+    wcsInfo->crpix[0] = CRPIX1;
+    wcsInfo->crpix[1] = CRPIX2;
+
+    char strCd[STRLEN];
     for (int i=0; i<2; ++i) {
         for (int j=0; j<2; ++j) {
-            sprintf(strCd, "CD%d_%d", i, j);
+            sprintf(strCd, "cd%d_%d", i+1, j+1);
             wcsInfo->cd[(2*i) + j] = DatumGetFloat8(GetAttributeByName(t, strCd, &isNull));
         }
     }
@@ -93,8 +116,10 @@ c_skyToIdx(PG_FUNCTION_ARGS)
     int stat[1];
     status = 0;
     status = wcss2p(wcsInfo, 1, 2, skyIn, &phi, &theta, imgcrd, pixOut, stat);
+
     double xLin = pixOut[0];
     double yLin = pixOut[1];
+    fprintf(stderr, "LIN %f %f\n", xLin, yLin);
 
     double U = xLin - CRPIX1;
     double V = yLin - CRPIX2;
@@ -102,31 +127,28 @@ c_skyToIdx(PG_FUNCTION_ARGS)
     uPoly = polyElements(sipOrder, U);
     vPoly = polyElements(sipOrder, V);
 
-    /* SIP matrices */
-    double sipAp[sipOrder+1][sipOrder+1], sipBp[sipOrder+1][sipOrder+1];
-    char strA[6], strB[6];
-    for (int i = 0; i <= sipOrder; ++i) {
-        for (int j = 0; j <= sipOrder-i; ++j) {
-            sprintf(strA, "AP_%d_%d", i, j);
-            sprintf(strB, "BP_%d_%d", i, j);
-            sipAp[i][j] = DatumGetFloat8(GetAttributeByName(t, strA, &isNull));
-            sipBp[i][j] = DatumGetFloat8(GetAttributeByName(t, strB, &isNull));
-        }
-    }
-
     /* Create additional SIP modification */
     double F=0., G=0.;
-    for (int i = 0; i < sipOrder; ++i) {
-        for (int j = 0; j < sipOrder; ++j) {
-            F += sipAp[i][j] * *(uPoly+i) * *(vPoly+j);
-            G += sipBp[i][j] * *(uPoly+i) * *(vPoly+j);
+    char strA[STRLEN], strB[STRLEN];
+    double sipAp, sipBp;
+    for (int i = 0; i <= sipOrder; ++i) {
+        for (int j = 0; j <= sipOrder-i; ++j) {
+            sprintf(strA, "ap_%d_%d", i, j);
+            sprintf(strB, "bp_%d_%d", i, j);
+            sipAp = DatumGetFloat8(GetAttributeByName(t, strA, &isNull));
+            sipBp = DatumGetFloat8(GetAttributeByName(t, strB, &isNull));
+            F += sipAp * *(uPoly+i) * *(vPoly+j);
+            G += sipBp * *(uPoly+i) * *(vPoly+j);
         }
     }
-
+    fprintf(stderr, "SIP %f %f\n", xLin+F, yLin+G);
+    fprintf(stderr, "FINAL %f %f\n", xLin + F + fitsToLsstPixels, yLin + G + fitsToLsstPixels);        
     /* Final x,y coordinates */
     int xWarp = (int) xLin + F + fitsToLsstPixels + 0.5;
     int yWarp = (int) yLin + G + fitsToLsstPixels + 0.5;
     int pIdx  = xWarp + nPixX * yWarp;
+    fprintf(stderr, "INT %d %d %d\n", xWarp, yWarp, pIdx);
+
     pfree(wcsInfo);
     pfree(uPoly);
     pfree(vPoly);

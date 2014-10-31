@@ -592,4 +592,4 @@ vi authorized_keys
 chmod og-rw authorized_keys
 
 # And getting wcs data over
-\COPY wcs (fieldId, CRPIX1, CRPIX2, CD1_1, CD1_2, CD2_1, CD2_2, CRVAL1, CRVAL2, A_0_2, A_0_3, A_0_4, A_1_1, A_1_2, A_1_3, A_2_0, A_2_1, A_2_2, A_3_0, A_3_1, A_4_0, B_0_2, B_0_3, B_0_4, B_1_1, B_1_2, B_1_3, B_2_0, B_2_1, B_2_2, B_3_0, B_3_1, B_4_0) FROM '/home/ec2-user/data/wcs-001040-r6-0125.csv' CSV
+\COPY wcs (fieldId, CRPIX1, CRPIX2, CD1_1, CD1_2, CD2_1, CD2_2, CRVAL1, CRVAL2, AP_0_0, AP_0_1, AP_0_2, AP_0_3, AP_0_4, AP_0_5, AP_1_0, AP_1_1, AP_1_2, AP_1_3, AP_1_4, AP_2_0, AP_2_1, AP_2_2, AP_2_3, AP_3_0, AP_3_1, AP_3_2, AP_4_0, AP_4_1, AP_5_0, BP_0_0, BP_0_1, BP_0_2, BP_0_3, BP_0_4, BP_0_5, BP_1_0, BP_1_1, BP_1_2, BP_1_3, BP_1_4, BP_2_0, BP_2_1, BP_2_2, BP_2_3, BP_3_0, BP_3_1, BP_3_2, BP_4_0, BP_4_1, BP_5_0) FROM '/home/ec2-user/data/wcs-001040-r6-0125.csv' CSV

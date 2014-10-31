@@ -56,7 +56,7 @@ def getFields():
         bbox           = ppygis.Geometry.read_ewkb(result[1])
         ll, lr, ul, ur = bbox.rings[0].points[:4]
         tmid           = result[2]
-        if tmid.year < 2001:
+        if tmid.year < 2005:
             continue
         if ll.x > -40: 
             continue
