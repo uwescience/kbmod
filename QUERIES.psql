@@ -1,3 +1,5 @@
+Q1 ###########################################################################################################
+
 explain SELECT p.pixelId, p.pidx, p.ra, p.decl, p.fval, ST_DISTANCE(traj, p.radec) AS dist FROM
   ST_SetSRID(ST_MakePoint(-41.1, 0.9),3786) as traj,
   pixels as p,
@@ -38,7 +40,7 @@ LIMIT 3;
 Time: 5477.690 ms
 
 
-##### NOTE I FORGOT INDEX bboxidx2 ON PIXELS2
+Q2 ###########################################################################################################
 
 explain SELECT p.pixelId, p.pidx, ST_AsText(ST_Centroid(p.bbox)), p.fval FROM
   ST_SetSRID(ST_MakePoint(-41.1, 0.9),3786) as traj,
@@ -73,7 +75,7 @@ AND
 
 Time: 81019.184 ms
 
-#####
+Q3 ###########################################################################################################
 
 #########
 # FWIW:
@@ -130,3 +132,132 @@ AND
 (2 rows)
 
 Time: 3267627.736 ms
+
+
+Q4 ###########################################################################################################
+
+explain SELECT p.pixelId, p.pidx, p.ra, p.decl, p.fval
+FROM
+  ST_SetSRID(ST_MakePoint(-41.1, 0.9),3786) as traj,
+  pixels as p,
+  fields as f,
+  wcs as w,
+  c_skyToIdx(w, -41.1, 0.9) as idx
+WHERE
+  TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = w.fieldId
+AND
+ f.fieldId = p.fieldId
+AND
+ p.pidx = idx;
+
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=25141.23..3897860.81 rows=38 width=32)
+   Join Filter: (f.fieldid = p.fieldid)
+   ->  Nested Loop  (cost=0.57..16.91 rows=1 width=20)
+         ->  Nested Loop  (cost=0.57..16.89 rows=1 width=452)
+               ->  Nested Loop  (cost=0.28..8.57 rows=1 width=8)
+                     Join Filter: ((traj.traj && f.bbox) AND _st_intersects(traj.traj, f.bbox))
+                     ->  Function Scan on traj  (cost=0.00..0.01 rows=1 width=32)
+                     ->  Index Scan using trangeidx on fields f  (cost=0.28..8.29 rows=1 width=128)
+                           Index Cond: ('1999-10-14 03:49:01.772609+00'::timestamp with time zone <@ trange)
+               ->  Index Scan using fieldwcsidx on wcs w  (cost=0.29..8.31 rows=1 width=444)
+                     Index Cond: (fieldid = f.fieldid)
+         ->  Function Scan on c_skytoidx idx  (cost=0.00..0.01 rows=1 width=4)
+   ->  Bitmap Heap Scan on pixels p  (cost=25140.66..3881056.66 rows=1342979 width=40)
+         Recheck Cond: (pidx = idx.idx)
+         ->  Bitmap Index Scan on pidxidx  (cost=0.00..24804.91 rows=1342979 width=0)
+               Index Cond: (pidx = idx.idx)
+
+  pixelid  |  pidx   |      ra       |    decl     |   fval   
+-----------+---------+---------------+-------------+----------
+ 831023078 | 1579615 | -41.100017383 | 0.900048875 | 0.222927
+(1 row)
+
+Time: 1813.084 ms
+
+# PIXELS1 vs PIXELS2 vs PIXELS3
+
+SELECT p.pixelId, p.pidx, p.ra, p.decl, p.fval
+FROM
+  ST_SetSRID(ST_MakePoint(-41.1, 0.93),3786) as traj,
+  pixels as p,
+  fields as f,
+  wcs as w,
+  c_skyToIdx(w, -41.1, 0.93) as idx
+WHERE
+  TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = w.fieldId
+AND
+ f.fieldId = p.fieldId
+AND
+ p.pidx = idx;
+
+   pixelid  |  pidx   |      ra       |    decl     |  fval   
+-----------+---------+---------------+-------------+---------
+ 831023350 | 1579887 | -41.100018778 | 0.929960763 | -0.1534
+(1 row)
+
+Time: 810.350 ms
+
+####
+
+SELECT p.pixelId, p.pidx, ST_AsText(ST_Centroid(p.bbox)), p.fval
+FROM
+  ST_SetSRID(ST_MakePoint(-41.1, 0.93),3786) as traj,
+  pixels2 as p,
+  fields as f,
+  wcs as w,
+  c_skyToIdx(w, -41.1, 0.93) as idx
+WHERE
+  TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = w.fieldId
+AND
+ f.fieldId = p.fieldId
+AND
+ p.pidx = idx;
+
+   pixelid  |  pidx   |                 st_astext                  |  fval   
+-----------+---------+--------------------------------------------+---------
+ 302037376 | 1579887 | POINT(-41.1000187780834 0.929960762750003) | -0.1534
+(1 row)
+
+Time: 1021.117 ms
+
+####
+
+SELECT p.pixelId, p.pidx, p.fval
+FROM
+  ST_SetSRID(ST_MakePoint(-41.1, 0.93),3786) as traj,
+  pixels3 as p,
+  fields as f,
+  wcs as w,
+  c_skyToIdx(w, -41.1, 0.93) as idx
+WHERE
+  TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = w.fieldId
+AND
+ f.fieldId = p.fieldId
+AND
+ p.pidx = idx;
+
+  pixelid  |  pidx   |  fval   
+-----------+---------+---------
+ 302037376 | 1579887 | -0.1534
+(1 row)
+
+Time: 857.961 ms
+
