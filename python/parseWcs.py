@@ -6,6 +6,7 @@ import time
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
+import lsst.afw.coord as afwCoord
 import lsst.meas.algorithms as measAlg
 import lsst.daf.persistence as dafPersist
 import lsst.daf.base as dafBase
@@ -19,6 +20,7 @@ PixelZeroPos = 0.0
 
 # https://dev.lsstcorp.org/cgit/LSST/DMS/afw.git/tree/src/image/TanWcs.cc#n50
 fitsToLsstPixels = -1.0
+lsstToFitsPixels = +1.0
 
 # Total convention offset
 offset = PixelZeroPos + fitsToLsstPixels
@@ -39,8 +41,8 @@ def doit(args):
     butler = dafPersist.ButlerFactory(mapper = mapper).create()
 
     wcs    = butler.get(datasetType="asTrans", dataId = dataId)
-    distortPixel(1.0, 2.0, wcs)
-    import pdb; pdb.set_trace()
+    #distortPixel(1.0, 2.0, wcs)
+    skyToPixel(wcs)
 
 def makeApBp(wcs):
     # Turn wcs metadata into distortion matrices
@@ -90,9 +92,15 @@ def distortPixel(x, y, wcs):
             F += Ap[i,j] * uPoly[i] * vPoly[j]
             G += Bp[i,j] * uPoly[i] * vPoly[j]
             
+    print "U", U
+    print "V", V
+    print "uPoly", uPoly
+    print "vPoly", vPoly
+    print "F", F
+    print "G", G
     return x + F, y + G
     
-def skyToPixel(raDeg, decDeg, wcs):
+def skyToPixel(wcs):
     # https://dev.lsstcorp.org/cgit/LSST/DMS/afw.git/tree/src/image/TanWcs.cc#n252
     # wcss2p(_wcsInfo, 1, 2, skyTmp, &phi, &theta, imgcrd, pixTmp, stat);
 
@@ -104,7 +112,7 @@ def skyToPixel(raDeg, decDeg, wcs):
     import pywcs
     md = wcs.getFitsMetadata() 
     prm = pywcs.Wcsprm()
-    prm.crpix   = np.array((md.get("CRPIX1"), md.get("CRPIX2")))
+    prm.crpix   = np.array((md.get("CRPIX1")+lsstToFitsPixels, md.get("CRPIX2")+lsstToFitsPixels))
     prm.crval   = np.array((md.get("CRVAL1"), md.get("CRVAL2")))
     prm.cunit   = ["deg", "deg"]
     prm.ctype   = ["RA---TAN", "DEC--TAN"]
@@ -112,8 +120,20 @@ def skyToPixel(raDeg, decDeg, wcs):
     prm.radesys = md.get("RADESYS")
     prm.cd      = np.array(((md.get("CD1_1"), md.get("CD1_2")), (md.get("CD2_1"), md.get("CD2_2"))))
 
-    raref       = 318.62
-    decref      = -0.11
+    raref       = -41.0748270035
+    decref      = 0.833286131146
+
+    # EXTENT OF IMAGE
+    #(Pdb) print wcs.pixelToSky(0,0)[0].asDegrees()-360, wcs.pixelToSky(0,0)[1].asDegrees()
+    #-41.184824709 0.833295656375
+    #(Pdb) print wcs.pixelToSky(2000,0)[0].asDegrees()-360, wcs.pixelToSky(2000,0)[1].asDegrees()
+    #-41.1848395848 1.05330551967
+    #(Pdb) print wcs.pixelToSky(2000,1000)[0].asDegrees()-360, wcs.pixelToSky(2000,1000)[1].asDegrees()
+    #-41.0748418793 1.05329599534
+    #(Pdb) print wcs.pixelToSky(0,1000)[0].asDegrees()-360, wcs.pixelToSky(0,1000)[1].asDegrees()
+    #-41.0748270035 0.833286131146
+
+
     # LSST official Wcs result
     xref, yref  = wcs.skyToPixel(afwCoord.Coord(afwGeom.Point2D(raref, decref)))
     
@@ -123,7 +143,13 @@ def skyToPixel(raDeg, decDeg, wcs):
     # SIP addition
     xp, yp = distortPixel(xlin, ylin, wcs)
 
-    print xref, yref, "LIN", (xref-xlin), (yref-ylin), "SIP", (xref-xp), (yref-yp)
+    # HEY NOTE THAT xref,yref should equal xp+offset,yp+offset
+
+    print "LSST", xref, yref 
+    print "LIN", xlin, ylin, (xref-xlin), (yref-ylin)
+    print "SIP", xp, yp, (xref-xp), (yref-yp)
+    print "FINAL", xp + offset, yp + offset
+    print "IDX", int(xp+offset+0.5), int(yp+offset+0.5), int(xp+offset+0.5)+2048*int(yp+offset+0.5)
     return xp + offset, yp + offset
     
 if __name__ == "__main__":
@@ -147,6 +173,7 @@ if __name__ == "__main__":
             dId["filter"] = filterName
             args.append(dId)
 
+    args = [{"run": 1040, "camcol": 6, "field": 125, "filter": "r"},]
     if True:
         # 1 by 1
         map(doit, args)
