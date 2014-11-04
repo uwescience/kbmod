@@ -10,26 +10,21 @@
  pg_config --includedir-server
  pg_config --libdir
 
-cc -fpic -c skyToIdx.c -I/opt/local/include -I/opt/local/include/postgresql93/server/
+# HOW TO BUILD:
 
- # Linux
-cc -shared -lwcs -L/opt/local/lib -o skyToIdx.so skyToIdx.o
+Window 1: rm skyToIdx.o skyToIdx.so ; cc -fpic -c skyToIdx.c -I/opt/local/include -I/opt/local/include/postgresql93/server/ ; cc -bundle -flat_namespace -undefined suppress -lwcs -L/opt/local/lib -o skyToIdx.so skyToIdx.o
 
- # OS X
-cc -bundle -flat_namespace -undefined suppress -lwcs -L/opt/local/lib -o skyToIdx.so skyToIdx.o
+Window 2: \q
+          psql -U postgres -d kbmod
+          CREATE OR REPLACE FUNCTION c_skyToIdx(wcs, double precision, double precision) RETURNS integer
+            AS '/Users/acbecker/src/github/kbmod/src/skyToIdx', 'c_skyToIdx'
+            LANGUAGE C STRICT;
 
- # To install in DB
- CREATE OR REPLACE FUNCTION c_skyToIdx(wcs, double precision, double precision) RETURNS integer
-     AS '/Users/acbecker/src/github/kbmod/src/skyToIdx', 'c_skyToIdx'
-     LANGUAGE C STRICT;
+# Other useful pgsql commands:
 
 DROP FUNCTION c_skyToIdx(wcs, double precision, double precision);
-
 \df+ c_skyToIdx;
 
- CREATE OR REPLACE FUNCTION hello(TEXT) RETURNS TEXT
-     AS '/Users/acbecker/src/github/kbmod/src/skyToIdx', 'hello'
-     LANGUAGE C STRICT;
 */
 
 #ifdef PG_MODULE_MAGIC
@@ -40,7 +35,7 @@ PG_FUNCTION_INFO_V1(c_skyToIdx);
 
 double* polyElements(int const order, double const value)
 {
-    double* poly = palloc(order+1 * sizeof(double));
+    double* poly = palloc((order+1) * sizeof(double));
     poly[0] = 1.0;
     if (order == 0) {
         return poly;
@@ -127,6 +122,19 @@ c_skyToIdx(PG_FUNCTION_ARGS)
     uPoly = polyElements(sipOrder, U);
     vPoly = polyElements(sipOrder, V);
 
+    fprintf(stderr, "U %f\n", U);
+    fprintf(stderr, "V %f\n", V);
+    fprintf(stderr, "uPoly ");
+    for (int i=0; i<sipOrder+1; i++) {
+        fprintf(stderr, "%e ", *(uPoly+i));
+    }
+    fprintf(stderr, "\n");
+    fprintf(stderr, "vPoly ");
+    for (int i=0; i<sipOrder+1; i++) {
+        fprintf(stderr, "%e ", *(vPoly+i));
+    }
+    fprintf(stderr, "\n");
+
     /* Create additional SIP modification */
     double F=0., G=0.;
     char strA[STRLEN], strB[STRLEN];
@@ -141,11 +149,14 @@ c_skyToIdx(PG_FUNCTION_ARGS)
             G += sipBp * *(uPoly+i) * *(vPoly+j);
         }
     }
+    fprintf(stderr, "F %f\n", F);
+    fprintf(stderr, "G %f\n", G);
+
     fprintf(stderr, "SIP %f %f\n", xLin+F, yLin+G);
     fprintf(stderr, "FINAL %f %f\n", xLin + F + fitsToLsstPixels, yLin + G + fitsToLsstPixels);        
     /* Final x,y coordinates */
-    int xWarp = (int) xLin + F + fitsToLsstPixels + 0.5;
-    int yWarp = (int) yLin + G + fitsToLsstPixels + 0.5;
+    int xWarp = (int) (xLin + F + fitsToLsstPixels + 0.5);
+    int yWarp = (int) (yLin + G + fitsToLsstPixels + 0.5);
     int pIdx  = xWarp + nPixX * yWarp;
     fprintf(stderr, "INT %d %d %d\n", xWarp, yWarp, pIdx);
 
