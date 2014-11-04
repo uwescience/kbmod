@@ -41,7 +41,8 @@ double* polyElements(int const order, double const value)
         return poly;
     }
     poly[1] = value;
-    for (int i=2; i<=order; ++i) {
+    int i;
+    for (i=2; i<=order; ++i) {
         poly[i] = poly[i-1]*value;
     }
     return poly;
@@ -84,8 +85,9 @@ c_skyToIdx(PG_FUNCTION_ARGS)
     wcsInfo->crpix[1] = CRPIX2;
 
     char strCd[STRLEN];
-    for (int i=0; i<2; ++i) {
-        for (int j=0; j<2; ++j) {
+    int i, j;
+    for (i=0; i<2; ++i) {
+        for (j=0; j<2; ++j) {
             sprintf(strCd, "cd%d_%d", i+1, j+1);
             wcsInfo->cd[(2*i) + j] = DatumGetFloat8(GetAttributeByName(t, strCd, &isNull));
         }
@@ -125,12 +127,12 @@ c_skyToIdx(PG_FUNCTION_ARGS)
     fprintf(stderr, "U %f\n", U);
     fprintf(stderr, "V %f\n", V);
     fprintf(stderr, "uPoly ");
-    for (int i=0; i<sipOrder+1; i++) {
+    for (i=0; i<sipOrder+1; i++) {
         fprintf(stderr, "%e ", *(uPoly+i));
     }
     fprintf(stderr, "\n");
     fprintf(stderr, "vPoly ");
-    for (int i=0; i<sipOrder+1; i++) {
+    for (i=0; i<sipOrder+1; i++) {
         fprintf(stderr, "%e ", *(vPoly+i));
     }
     fprintf(stderr, "\n");
@@ -139,8 +141,8 @@ c_skyToIdx(PG_FUNCTION_ARGS)
     double F=0., G=0.;
     char strA[STRLEN], strB[STRLEN];
     double sipAp, sipBp;
-    for (int i = 0; i <= sipOrder; ++i) {
-        for (int j = 0; j <= sipOrder-i; ++j) {
+    for (i = 0; i <= sipOrder; ++i) {
+        for (j = 0; j <= sipOrder-i; ++j) {
             sprintf(strA, "ap_%d_%d", i, j);
             sprintf(strB, "bp_%d_%d", i, j);
             sipAp = DatumGetFloat8(GetAttributeByName(t, strA, &isNull));
