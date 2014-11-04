@@ -28,6 +28,7 @@ CREATE INDEX fieldidx ON pixels (fieldId);
 CREATE INDEX radecidx ON pixels USING GIST (radec);
 ALTER TABLE pixels ADD CONSTRAINT "pixels_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
 CREATE INDEX pidxidx ON pixels (pidx);
+CREATE UNIQUE INDEX pfieldpidx ON pixels (fieldId, pidx);
 
 ####
 
