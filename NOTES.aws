@@ -593,3 +593,31 @@ chmod og-rw authorized_keys
 
 # And getting wcs data over
 \COPY wcs (fieldId, CRPIX1, CRPIX2, CD1_1, CD1_2, CD2_1, CD2_2, CRVAL1, CRVAL2, AP_0_0, AP_0_1, AP_0_2, AP_0_3, AP_0_4, AP_0_5, AP_1_0, AP_1_1, AP_1_2, AP_1_3, AP_1_4, AP_2_0, AP_2_1, AP_2_2, AP_2_3, AP_3_0, AP_3_1, AP_3_2, AP_4_0, AP_4_1, AP_5_0, BP_0_0, BP_0_1, BP_0_2, BP_0_3, BP_0_4, BP_0_5, BP_1_0, BP_1_1, BP_1_2, BP_1_3, BP_1_4, BP_2_0, BP_2_1, BP_2_2, BP_2_3, BP_3_0, BP_3_1, BP_3_2, BP_4_0, BP_4_1, BP_5_0) FROM '/home/ec2-user/data/wcs-001040-r6-0125.csv' CSV
+
+\COPY wcs (fieldId, CRPIX1, CRPIX2, CD1_1, CD1_2, CD2_1, CD2_2, CRVAL1, CRVAL2, AP_0_0, AP_0_1, AP_0_2, AP_0_3, AP_0_4, AP_0_5, AP_1_0, AP_1_1, AP_1_2, AP_1_3, AP_1_4, AP_2_0, AP_2_1, AP_2_2, AP_2_3, AP_3_0, AP_3_1, AP_3_2, AP_4_0, AP_4_1, AP_5_0, BP_0_0, BP_0_1, BP_0_2, BP_0_3, BP_0_4, BP_0_5, BP_1_0, BP_1_1, BP_1_2, BP_1_3, BP_1_4, BP_2_0, BP_2_1, BP_2_2, BP_2_3, BP_3_0, BP_3_1, BP_3_2, BP_4_0, BP_4_1, BP_5_0) FROM '/home/ec2-user/data/batch1.wcs' CSV
+
+# Grab the UDF!
+sudo yum install git
+git clone https://github.com/uwescience/kbmod.git
+cd kbmod
+cc -fpic -c skyToIdx.c -I/usr/local/include/ -I/usr/include/pgsql/server/
+cc -shared -lwcs -L/usr/local/lib -o skyToIdx.so skyToIdx.o
+
+psql93 -U postgres -d kbmod
+CREATE OR REPLACE FUNCTION c_skyToIdx(wcs, double precision, double precision) RETURNS integer
+            AS '/home/ec2-user/src/kbmod/src/skyToIdx', 'c_skyToIdx'
+            LANGUAGE C STRICT;
+
+ERROR:  could not load library "/home/ec2-user/src/kbmod/src/skyToIdx.so": libwcs.so.4: cannot open shared object file: No such file or directory
+
+# NOTE - this worked on my Mac
+# HA!  I had to do a 
+sudo yum reinstall postgresql93.x86_64 postgresql93-server.x86_64 postgresql93-contrib.x86_64 postgresql93-devel.x86_64
+
+# BECAUSE!  I HAD NOT
+sudo vi /etc/ld.so.conf
+sudo ldconfig
+
+when I originally installed the package.  That was tricky...
+
+
