@@ -96,4 +96,500 @@ kbmod=> explain select count(*) from (select distinct fieldId from pixels) X;
 does not use index.  perhaps we have not declared that fieldId is not null?
 
 alter table pixels alter column fieldid set not null;
+Time: 2602383.651 ms
 
+
+########## TESTING OF PIXELS TABLES
+
+
+CREATE TABLE pixels ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT REFERENCES fields(fieldId),
+    pidx INTEGER,
+    ra DOUBLE PRECISION,
+    decl DOUBLE PRECISION,
+    radec GEOMETRY(POINT,3786),
+    fval REAL,
+    mask INTEGER
+  );
+
+CREATE TABLE pixels2 ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT REFERENCES fields(fieldId),
+    pidx INTEGER,
+    ll_r DOUBLE PRECISION,
+    ll_d DOUBLE PRECISION,
+    lr_r DOUBLE PRECISION,
+    lr_d DOUBLE PRECISION,
+    ur_r DOUBLE PRECISION,
+    ur_d DOUBLE PRECISION,
+    ul_r DOUBLE PRECISION,
+    ul_d DOUBLE PRECISION,
+    bbox GEOMETRY(POLYGON,3786),
+    fval REAL,
+    mask INTEGER
+  );
+
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/local/acbecker/kbmod/batch3.pixel' CSV
+\COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/local/acbecker/kbmod/batch3.pixel2' CSV
+Time: 22685042.021 ms
+
+UPDATE pixels SET radec = ST_SetSRID(ST_MakePoint(ra, decl), 3786);
+UPDATE 268595800
+Time: 11833705.886 ms
+
+
+UPDATE pixels2 SET bbox = ST_SetSRID(ST_MakePolygon(ST_MakeLine(ARRAY[ST_MakePoint(ll_r,ll_d), ST_MakePoint(lr_r,lr_d),
+                                                                      ST_MakePoint(ur_r,ur_d), ST_MakePoint(ul_r,ul_d),
+                                                                      ST_MakePoint(ll_r,ll_d)])), 3786);
+Time: 17775121.706 ms
+
+
+kbmod=> CREATE INDEX fieldidx ON pixels (fieldId);
+CREATE INDEX
+Time: 10559253.004 ms
+
+kbmod=> CREATE INDEX fieldidx2 ON pixels2 (fieldId);
+CREATE INDEX
+Time: 8371265.872 ms
+
+kbmod=> CREATE INDEX pradecidx ON pixels USING GIST (radec);
+CREATE INDEX
+Time: 16198041.883 ms
+
+kbmod=> CREATE INDEX pbboxidx ON pixels2 USING GIST (bbox);
+CREATE INDEX
+Time: 16310668.184 ms
+CREATE INDEX fieldidx ON pixels (fieldId);
+CREATE INDEX fieldidx2 ON pixels2 (fieldId);
+
+CREATE INDEX pradecidx ON pixels USING GIST (radec);
+CREATE INDEX pbboxidx ON pixels2 USING GIST (bbox);
+
+--A--
+
+explain SELECT p.pixelId, p.ra, p.decl, p.fval, ST_DISTANCE(traj, p.radec) AS dist FROM
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),4326) as traj,
+  pixels as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = p.fieldId
+ORDER BY dist;
+
+ Sort  (cost=16428230.74..16428281.03 rows=20116 width=92)
+   Sort Key: (st_distance(traj.traj, p.radec))
+   ->  Nested Loop  (cost=8.31..16425760.34 rows=20116 width=92)
+         Join Filter: ((traj.traj && f.bbox) AND _st_intersects(traj.traj, f.bbox))
+         ->  Function Scan on traj  (cost=0.00..0.01 rows=1 width=32)
+         ->  Hash Join  (cost=8.31..16415450.88 rows=20116 width=180)
+               Hash Cond: (p.fieldid = f.fieldid)
+               ->  Seq Scan on pixels p  (cost=0.00..13749944.21 rows=710745921 width=68)
+               ->  Hash  (cost=8.29..8.29 rows=1 width=128)
+                     ->  Index Scan using trangeidx on fields f  (cost=0.28..8.29 rows=1 width=128)
+                           Index Cond: ('2006-10-28 02:55:13.932192+00'::timestamp with time zone <@ trange)
+
+--B--
+
+explain SELECT p.pixelId, ST_AsText(ST_Centroid(p.bbox)), p.fval FROM
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj,
+  pixels2 as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+  ST_INTERSECTS(traj, p.bbox)
+AND
+  f.fieldId = p.fieldId;
+
+ Nested Loop  (cost=8.31..23073856.17 rows=1 width=44)
+   Join Filter: ((traj.traj && p.bbox) AND (traj.traj && f.bbox) AND _st_intersects(traj.traj, p.bbox) AND _st_intersects(traj.traj, f.bbox))
+   ->  Function Scan on traj  (cost=0.00..0.01 rows=1 width=32)
+   ->  Hash Join  (cost=8.31..23062704.35 rows=21654 width=164)
+         Hash Cond: (p.fieldid = f.fieldid)
+         ->  Seq Scan on pixels2 p  (cost=0.00..20193387.91 rows=765091091 width=52)
+         ->  Hash  (cost=8.29..8.29 rows=1 width=128)
+               ->  Index Scan using trangeidx on fields f  (cost=0.28..8.29 rows=1 width=128)
+                     Index Cond: ('2006-10-28 02:55:13.932192+00'::timestamp with time zone <@ trange)
+
+--C--
+
+explain SELECT 
+  ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj,
+  (SELECT fieldId FROM fields as f,
+      ST_SetSRID(ST_MakePoint(-42.8471955, 0.7336945),3786) as traj
+    WHERE
+      TIMESTAMP WITH TIME ZONE '2006-10-28 02:55:13.932192z' <@ f.trange
+    AND
+      ST_INTERSECTS(traj, f.bbox)
+  ) as fieldId, 
+  p.pixelId, ST_AsText(ST_Centroid(p.bbox)), p.fval
+FROM 
+  pixels2 as p
+WHERE
+  p.fieldId = fieldId;
+
+AND
+  ST_INTERSECTS(traj, p.bbox);
+
+
+####### SETTING UP EC2 INSTANCE
+
+t2.small
+
+https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#Instances:search=i-b21cf2be;sort=instanceId
+
+chmod 400 ~/.ssh/acbecker_aws.pem
+ssh -i ~/.ssh/acbecker_aws.pem ec2-user@54.191.82.210
+
+# INSTALL AND START THE DATABASE
+sudo yum update 
+sudo yum install tcsh.x86_64 
+sudo chsh ec2-user
+  /bin/tcsh
+sudo yum install postgresql93.x86_64 postgresql93-server.x86_64 
+sudo yum install postgresql93.x86_64 postgresql93-server.x86_64 postgresql93-contrib.x86_64 postgresql93-devel.x86_64
+
+
+  # Where is the default database location?
+  sudo -u postgres ls /var/lib/pgsql93/
+
+sudo mkdir -p /var/lib/pgsql93/defaultdb
+sudo chown postgres:postgres /var/lib/pgsql93/defaultdb
+sudo su postgres -c '/usr/bin/initdb93 -D /var/lib/pgsql93/defaultdb' 
+sudo -u postgres /usr/bin/postgres -D /var/lib/pgsql93/defaultdb
+
+psql93 -U postgres
+create database kbmod;
+\c kbmod
+CREATE EXTENSION postgis;
+ERROR:  could not open extension control file "/usr/share/pgsql93/extension/postgis.control": No such file or directory
+
+# This could be a bad idea
+# http://www.postgresonline.com/journal/archives/329-An-almost-idiots-guide-to-install-PostgreSQL-9.3,-PostGIS-2.1-and-pgRouting-with-Yum.html
+ sudo rpm -ivh http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm 
+# DID NOT WORK
+
+sudo yum install gcc make gcc-c++ libtool libxml2-devel libpng libtiff
+sudo yum install geos-devel.x86_64 
+sudo yum install json-c-devel.x86_64
+
+# Proj.4 
+cd ~/src
+wget http://download.osgeo.org/proj/proj-4.8.0.tar.gz
+tar xzf proj-4.8.0.tar.gz
+cd proj-4.8.0
+./configure
+make
+sudo make install
+
+# GDAL
+cd ~/src
+wget http://download.osgeo.org/gdal/1.10.1/gdal-1.10.1.tar.gz
+tar -xvzf gdal-1.10.1.tar.gz
+cd gdal-1.10.1
+./configure
+make
+sudo make install
+
+# PostGIS 
+cd ~/src
+wget http://download.osgeo.org/postgis/source/postgis-2.1.4.tar.gz
+tar -xvzf postgis-2.1.4.tar.gz
+cd postgis-2.1.4
+./configure --with-pgconfig=/usr/bin/pg_config93
+make
+make install
+
+sudo vi /etc/ld.so.conf
+ # add /usr/local/lib so that postgres can see the things I've install manually above
+sudo ldconfig
+
+# NOW I CAN:
+kbmod=# CREATE EXTENSION postgis;
+
+
+CREATE TABLE fields ( 
+    fieldId BIGINT PRIMARY KEY,
+    run INTEGER,
+    camcol SMALLINT,
+    field INTEGER,
+    filter VARCHAR(1),
+    bbox GEOMETRY(POLYGON,3786),
+    tmid TIMESTAMP WITH TIME ZONE,
+    trange TSTZRANGE
+  );
+
+CREATE TABLE pixels ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT REFERENCES fields(fieldId),
+    pidx INTEGER,
+    ra DOUBLE PRECISION,
+    decl DOUBLE PRECISION,
+    radec GEOMETRY(POINT,3786),
+    fval REAL,
+    mask INTEGER
+  );
+
+CREATE TABLE pixels2 ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT REFERENCES fields(fieldId),
+    pidx INTEGER,
+    ll_r DOUBLE PRECISION,
+    ll_d DOUBLE PRECISION,
+    lr_r DOUBLE PRECISION,
+    lr_d DOUBLE PRECISION,
+    ur_r DOUBLE PRECISION,
+    ur_d DOUBLE PRECISION,
+    ul_r DOUBLE PRECISION,
+    ul_d DOUBLE PRECISION,
+    bbox GEOMETRY(POLYGON,3786),
+    fval REAL,
+    mask INTEGER
+  );
+
+# Get data over there to ingest:
+scp -i ~/.ssh/acbecker_aws.pem *.* ec2-user@54.191.82.210:data/.
+
+\i /home/ec2-user/data/batch1.field
+\i /home/ec2-user/data/batch2.field
+
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/batch3.pixel' CSV
+\COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/batch3.pixel2' CSV
+
+# Expose database to outside world
+# https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#SecurityGroups:search=sg-c4a6c0a1;sort=groupId
+Go to interface, edit security group, add custom rule
+Custom TCP rule, protocol=TCP, port=5432 
+ 
+# Doesn't seem to work..?
+  UWacb216:psql -h 54.69.147.16
+  psql: could not connect to server: Connection refused
+ 	Is the server running on host "54.69.147.16" and accepting
+ 	TCP/IP connections on port 5432?
+
+# Might need to tell postgres to listen to the open port..?
+
+Anyways, access locked up after a day of copy.  Could not ssh in.  I ctrl-Z my server screen window and tried
+to run top and got:
+  No more processes.
+
+Can only run built in commands...  E.g. echo, cd, etc...
+ unlimit maxproc?
+
+Just froze.  Reboot.  Upgrade to a m3.medium and restart from AWS console (use right click)
+  ip address is now 54.191.82.210
+Had to sudo yum update
+
+# So how did I run out of processes..!?!?!?
+[ec2-user@ip-172-30-0-178 ~]$ limit
+cputime      unlimited
+filesize     unlimited
+datasize     unlimited
+stacksize    8192 kbytes
+coredumpsize 0 kbytes
+memoryuse    unlimited
+vmemoryuse   unlimited
+descriptors  1024 
+memorylocked 64 kbytes
+maxproc      30019 
+
+Clue?
+  Swap:        0k total
+
+ALTER USER Postgres WITH PASSWORD 'kbmod';
+
+postgres=# show config_file;
+                config_file                 
+--------------------------------------------
+ /var/lib/pgsql93/defaultdb/postgresql.conf
+
+
+# TUNE HOST
+http://samiux.wordpress.com/2009/07/26/howto-performance-tuning-for-postgresql-on-ubuntudebian/
+
+  listen_addresses = '*'      # what IP address(es) to listen on;
+  port = 5432       # (change requires restart)
+  max_connections = 100     # (change requires restart)
+  shared_buffers = 2GB      # min 128kB
+  work_mem = 400MB      # min 64kB
+  max_stack_depth = 6MB     # min 100kB
+  wal_buffers = 8MB     # min 32kB, -1 sets based on shared_buffers
+  checkpoint_segments = 16    # in logfile segments, min 1, 16MB each
+  checkpoint_completion_target = 0.9  # checkpoint target duration, 0.0 - 1.0
+  effective_cache_size = 2GB
+  logging_collector = on      # Enable capturing of stderr and csvlog
+  log_filename = 'postgresql-%a.log'  # log file name pattern,
+  log_truncate_on_rotation = on   # If on, an existing log file with the
+  log_rotation_age = 1d     # Automatic rotation of logfiles will
+  log_rotation_size = 0     # Automatic rotation of logfiles will
+  log_timezone = 'UTC'
+  datestyle = 'iso, mdy'
+  timezone = 'UTC'
+  lc_messages = 'en_US.UTF-8'     # locale for system error message
+  lc_monetary = 'en_US.UTF-8'     # locale for monetary formatting
+  lc_numeric = 'en_US.UTF-8'      # locale for number formatting
+  lc_time = 'en_US.UTF-8'       # locale for time formatting
+  default_text_search_config = 'pg_catalog.english'
+
+Check with 
+  select name,setting from pg_settings;
+
+  """
+  By default, PostgreSQL only responds to connections from the local host. If you want your server to be accessible from other systems via standard TCP/IP networking, you need to change listen_addresses from its default. The usual approach is to set it to listen to all addresses like this:
+
+  listen_addresses = '*'
+
+  And then control who can and can connect via the pg_hba.conf file. 
+  """
+
+> vi /var/lib/pgsql93/defaultdb/pg_hba.conf
+# TYPE  DATABASE        USER            CIDR-ADDRESS            METHOD
+# "local" is for Unix domain socket connections only
+local   all             postgres                                trust
+# IPv4 local connections:
+host    all             power_user      0.0.0.0/0               md5  
+host    all             other_user      0.0.0.0/0               md5 
+# IPv6 local connections:
+host    all             all             ::1/128                 md5
+
+# Can I connect?
+psql93 -U postgres -h 54.191.82.210 -p 5432
+Password for user postgres:
+
+This line was necessary:
+host    all             postgres             0.0.0.0/0            md5
+
+# We are just maxing out memory...  Chop down the file size...
+
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaa' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelab' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelac' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelad' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelae' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaf' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelag' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelah' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelai' CSV
+\COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaj' CSV
+
+# What is this doing!?
+kbmod=# \COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaa' CSV
+^CCancel request sent
+ERROR:  canceling statement due to user request
+CONTEXT:  SQL statement "SELECT 1 FROM ONLY "public"."fields" x WHERE "fieldid" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x"
+
+
+
+kbmod=# COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaa' CSV;
+ERROR:  could not open file "/home/ec2-user/data/pixelaa" for reading: Permission denied
+
+cd ../
+chmod a+rx .
+
+# Postgres's COPY comes in two separate variants, COPY and \COPY: COPY is server based, \COPY is client based. 
+kbmod=# COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaa' CSV;
+
+# What is taking up all the mem?
+ 9548 postgres  20   0 2368m 2.1g 2.1g R 80.1 57.3  74:51.68 postgres
+ 9793 postgres  20   0 2313m 658m 639m S  6.2 17.5   5:12.89 postgres
+ 9534 postgres  20   0 2298m 2.0g 2.0g S  0.7 55.5   0:24.07 postgres
+
+4 S root      9529  2250  0  80   0 - 45558 poll_s 00:17 pts/0    00:00:00 sudo -u postgres /usr/bin/postgres -D /var/lib/pgsql93/defaultdb
+4 S postgres  9530  9529  0  80   0 - 587487 poll_s 00:17 pts/0   00:00:00 /usr/bin/postgres -D /var/lib/pgsql93/defaultdb
+1 S postgres  9532  9530  0  80   0 - 46812 poll_s 00:18 ?        00:00:00 postgres: logger process                       
+1 S postgres  9534  9530  0  80   0 - 588398 poll_s 00:18 ?       00:00:23 postgres: checkpointer process                 
+1 S postgres  9535  9530  0  80   0 - 587744 poll_s 00:18 ?       00:00:12 postgres: writer process                       
+1 D postgres  9536  9530  0  80   0 - 587744 sleep_ 00:18 ?       00:00:47 postgres: wal writer process                   
+1 S postgres  9537  9530  0  80   0 - 587922 poll_s 00:18 ?       00:00:00 postgres: autovacuum launcher process          
+1 S postgres  9538  9530  0  80   0 - 47370 poll_s 00:18 ?        00:00:01 postgres: stats collector process              
+0 S ec2-user  9546  2359  0  80   0 - 44489 poll_s 00:19 pts/1    00:00:38 psql93 -U postgres
+1 R postgres  9548  9530 43  80   0 - 602816 ?     00:19 ?        01:14:36 postgres: postgres kbmod [local] COPY          
+1 S postgres  9793  9530  5  80   0 - 592147 poll_s 01:28 ?       00:05:11 postgres: autovacuum worker process   kbmod    
+0 S ec2-user 10166  2425  0  80   0 - 27571 pipe_w 03:10 pts/3    00:00:00 grep postgres
+
+9548 = copy
+9793 = autovacuum worker process
+9534 = checkpointer process
+
+kbmod=# \COPY pixels (fieldId, pidx, ra, decl, fval, mask) FROM '/home/ec2-user/data/pixelaj' CSV
+Time: 1165940.300 ms
+
+\COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2aa' CSV
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ab' CSV;
+
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ac' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ad' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ae' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ag' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ag' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ah' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ai' CSV;
+COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2aj' CSV;
+
+# Timing looks about the same...
+kbmod=# \COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2aa' CSV
+Time: 1319437.606 ms
+kbmod=# COPY pixels2 (fieldId, pidx, ll_r, ll_d, lr_r, lr_d, ur_r, ur_d, ul_r, ul_d, fval, mask) FROM '/home/ec2-user/data/pixel2ab' CSV;
+COPY 26859580
+Time: 1277357.302 ms
+
+# Autovacuum takes up tons of mem.  This says:
+https://wiki.postgresql.org/wiki/Tuning_Your_PostgreSQL_Server
+
+"it's acceptable to disable autovacuum for short periods of time, for instance when bulk loading large amounts of data."
+
+Fine.  Am setting
+
+  autovacuum = off 
+
+in /var/lib/pgsql93/defaultdb/postgresql.conf
+
+READ THIS CAREFULLY REGARDING INGEST:
+http://www.postgresql.org/docs/9.1/static/populate.html
+
+14.4.4. Remove Foreign Key Constraints:
+  it may be necessary, not just desirable, to drop and re-apply foreign keys when loading large amounts of data.
+
+ALTER TABLE pixels ADD CONSTRAINT "pixels_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+
+Anyways, lets create a minimal table pixels3 for quick queries
+
+CREATE TABLE pixels3 AS SELECT pixelId, fieldId, pidx, fval, mask FROM pixels2;
+ALTER TABLE pixels3 ADD PRIMARY KEY (pixelId);
+
+######### INSTALL WCSLIB FOR UDF
+cd ~/src
+wget ftp://heasarc.gsfc.nasa.gov/software/fitsio/c/cfitsio3370.tar.gz
+tar -xvzf cfitsio3370.tar.gz
+cd cfitsio
+./configure --prefix=/usr/local/
+make
+sudo make install
+
+cd ~/src
+wget ftp://ftp.atnf.csiro.au/pub/software/wcslib/wcslib.tar.bz2
+tar -xvjf wcslib.tar.bz2
+cd wcslib-4.24/
+./configure
+make
+sudo make install
+
+## Adding brandon as a user on the machine
+
+sudo adduser bdmeyers
+sudo su bdmeyers
+cd
+mkdir .ssh
+chmod og-rwx .ssh
+cd .ssh/
+vi authorized_keys
+chmod og-rw authorized_keys
+
+# And getting wcs data over
+\COPY wcs (fieldId, CRPIX1, CRPIX2, CD1_1, CD1_2, CD2_1, CD2_2, CRVAL1, CRVAL2, AP_0_0, AP_0_1, AP_0_2, AP_0_3, AP_0_4, AP_0_5, AP_1_0, AP_1_1, AP_1_2, AP_1_3, AP_1_4, AP_2_0, AP_2_1, AP_2_2, AP_2_3, AP_3_0, AP_3_1, AP_3_2, AP_4_0, AP_4_1, AP_5_0, BP_0_0, BP_0_1, BP_0_2, BP_0_3, BP_0_4, BP_0_5, BP_1_0, BP_1_1, BP_1_2, BP_1_3, BP_1_4, BP_2_0, BP_2_1, BP_2_2, BP_2_3, BP_3_0, BP_3_1, BP_3_2, BP_4_0, BP_4_1, BP_5_0) FROM '/home/ec2-user/data/wcs-001040-r6-0125.csv' CSV

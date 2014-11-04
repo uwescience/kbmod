@@ -1,0 +1,129 @@
+CREATE TABLE fields ( 
+    fieldId BIGINT PRIMARY KEY,
+    run INTEGER,
+    camcol SMALLINT,
+    field INTEGER,
+    filter VARCHAR(1),
+    bbox GEOMETRY(POLYGON,3786),
+    tmid TIMESTAMP WITH TIME ZONE,
+    trange TSTZRANGE
+);
+CREATE INDEX bboxidx ON fields USING GIST (bbox);
+CREATE INDEX trangeidx ON fields USING GIST (trange);
+
+####
+
+CREATE TABLE pixels ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT,
+    pidx INTEGER,
+    ra DOUBLE PRECISION,
+    decl DOUBLE PRECISION,
+    radec GEOMETRY(POINT,3786),
+    fval REAL,
+    mask INTEGER
+);
+UPDATE pixels SET radec = ST_SetSRID(ST_MakePoint(ra, decl), 3786);
+CREATE INDEX fieldidx ON pixels (fieldId);
+CREATE INDEX radecidx ON pixels USING GIST (radec);
+ALTER TABLE pixels ADD CONSTRAINT "pixels_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+CREATE INDEX pidxidx ON pixels (pidx);
+
+####
+
+CREATE TABLE pixels2 ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT,
+    pidx INTEGER,
+    ll_r DOUBLE PRECISION,
+    ll_d DOUBLE PRECISION,
+    lr_r DOUBLE PRECISION,
+    lr_d DOUBLE PRECISION,
+    ur_r DOUBLE PRECISION,
+    ur_d DOUBLE PRECISION,
+    ul_r DOUBLE PRECISION,
+    ul_d DOUBLE PRECISION,
+    bbox GEOMETRY(POLYGON,3786),
+    fval REAL,
+    mask INTEGER
+);
+UPDATE pixels2 SET bbox = ST_SetSRID(ST_MakePolygon(ST_MakeLine(ARRAY[ST_MakePoint(ll_r,ll_d), ST_MakePoint(lr_r,lr_d),
+                                                                      ST_MakePoint(ur_r,ur_d), ST_MakePoint(ul_r,ul_d),
+                                                                      ST_MakePoint(ll_r,ll_d)])), 3786);
+CREATE INDEX fieldidx2 ON pixels2 (fieldId);
+CREATE INDEX bboxidx2 ON pixels2 USING GIST (bbox);
+ALTER TABLE pixels2 ADD CONSTRAINT "pixels2_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+CREATE INDEX pidxidx2 ON pixels2 (pidx);
+
+####
+
+CREATE TABLE pixels3 ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    fieldId BIGINT,
+    pidx INTEGER,
+    fval REAL,
+    mask INTEGER
+);
+ALTER TABLE pixels3 ADD CONSTRAINT "pixels3_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+CREATE INDEX fieldidx3 ON pixels3 (fieldId);
+CREATE INDEX pidxidx3 ON pixels3 (pidx);
+
+####
+
+CREATE TABLE wcs ( 
+    wcsId   SERIAL PRIMARY KEY,
+    fieldId BIGINT,
+    CRPIX1  DOUBLE PRECISION,
+    CRPIX2  DOUBLE PRECISION,
+    CD1_1   DOUBLE PRECISION,
+    CD1_2   DOUBLE PRECISION,
+    CD2_1   DOUBLE PRECISION,
+    CD2_2   DOUBLE PRECISION,
+    CRVAL1  DOUBLE PRECISION,
+    CRVAL2  DOUBLE PRECISION,
+    AP_0_0  DOUBLE PRECISION,
+    AP_0_1  DOUBLE PRECISION,
+    AP_0_2  DOUBLE PRECISION,
+    AP_0_3  DOUBLE PRECISION,
+    AP_0_4  DOUBLE PRECISION,
+    AP_0_5  DOUBLE PRECISION,
+    AP_1_0  DOUBLE PRECISION,
+    AP_1_1  DOUBLE PRECISION,
+    AP_1_2  DOUBLE PRECISION,
+    AP_1_3  DOUBLE PRECISION,
+    AP_1_4  DOUBLE PRECISION,
+    AP_2_0  DOUBLE PRECISION,
+    AP_2_1  DOUBLE PRECISION,
+    AP_2_2  DOUBLE PRECISION,
+    AP_2_3  DOUBLE PRECISION,
+    AP_3_0  DOUBLE PRECISION,
+    AP_3_1  DOUBLE PRECISION,
+    AP_3_2  DOUBLE PRECISION,
+    AP_4_0  DOUBLE PRECISION,
+    AP_4_1  DOUBLE PRECISION,
+    AP_5_0  DOUBLE PRECISION,
+    BP_0_0  DOUBLE PRECISION,
+    BP_0_1  DOUBLE PRECISION,
+    BP_0_2  DOUBLE PRECISION,
+    BP_0_3  DOUBLE PRECISION,
+    BP_0_4  DOUBLE PRECISION,
+    BP_0_5  DOUBLE PRECISION,
+    BP_1_0  DOUBLE PRECISION,
+    BP_1_1  DOUBLE PRECISION,
+    BP_1_2  DOUBLE PRECISION,
+    BP_1_3  DOUBLE PRECISION,
+    BP_1_4  DOUBLE PRECISION,
+    BP_2_0  DOUBLE PRECISION,
+    BP_2_1  DOUBLE PRECISION,
+    BP_2_2  DOUBLE PRECISION,
+    BP_2_3  DOUBLE PRECISION,
+    BP_3_0  DOUBLE PRECISION,
+    BP_3_1  DOUBLE PRECISION,
+    BP_3_2  DOUBLE PRECISION,
+    BP_4_0  DOUBLE PRECISION,
+    BP_4_1  DOUBLE PRECISION,
+    BP_5_0  DOUBLE PRECISION
+);
+ALTER TABLE wcs ADD CONSTRAINT "wcs_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
+CREATE INDEX fieldwcsidx ON wcs (fieldId);
+

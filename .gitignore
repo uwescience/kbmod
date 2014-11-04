@@ -1,2 +1,6 @@
 *fits
 data/
+*~
+.ipynb_checkpoints
+*.o
+*.so

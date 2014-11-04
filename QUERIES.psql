@@ -1,0 +1,132 @@
+explain SELECT p.pixelId, p.pidx, p.ra, p.decl, p.fval, ST_DISTANCE(traj, p.radec) AS dist FROM
+  ST_SetSRID(ST_MakePoint(-41.1, 0.9),3786) as traj,
+  pixels as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+ f.fieldId = p.fieldId
+ORDER BY dist
+LIMIT 3;
+
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Limit  (cost=3911221.77..3911221.78 rows=3 width=96)
+   ->  Sort  (cost=3911221.77..3911240.78 rows=7602 width=96)
+         Sort Key: (st_distance(traj.traj, p.radec))
+         ->  Nested Loop  (cost=39868.94..3911123.52 rows=7602 width=96)
+               ->  Nested Loop  (cost=0.28..8.57 rows=1 width=40)
+                     Join Filter: ((traj.traj && f.bbox) AND _st_intersects(traj.traj, f.bbox))
+                     ->  Function Scan on traj  (cost=0.00..0.01 rows=1 width=32)
+                     ->  Index Scan using trangeidx on fields f  (cost=0.28..8.29 rows=1 width=128)
+                           Index Cond: ('1999-10-14 03:49:01.772609+00'::timestamp with time zone <@ trange)
+               ->  Bitmap Heap Scan on pixels p  (cost=39868.66..3895784.66 rows=1342979 width=72)
+                     Recheck Cond: (fieldid = f.fieldid)
+                     ->  Bitmap Index Scan on fieldidx  (cost=0.00..39532.92 rows=1342979 width=0)
+                           Index Cond: (fieldid = f.fieldid)
+
+
+  pixelid  |  pidx   |      ra       |    decl     |   fval   |         dist         
+-----------+---------+---------------+-------------+----------+----------------------
+ 831023078 | 1579615 | -41.100017383 | 0.900048875 | 0.222927 |  5.1874216273357e-05
+ 831023077 | 1579614 | -41.100017379 | 0.899938905 | 0.262024 | 6.35187268919702e-05
+ 831025096 | 1581663 | -41.099907385 | 0.900048866 | 0.220736 |  0.00010471592133463
+(3 rows)
+
+Time: 5477.690 ms
+
+
+##### NOTE I FORGOT INDEX bboxidx2 ON PIXELS2
+
+explain SELECT p.pixelId, p.pidx, ST_AsText(ST_Centroid(p.bbox)), p.fval FROM
+  ST_SetSRID(ST_MakePoint(-41.1, 0.9),3786) as traj,
+  pixels2 as p,
+  fields as f
+WHERE
+  TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
+AND
+  ST_INTERSECTS(traj, f.bbox)
+AND
+  ST_INTERSECTS(traj, p.bbox)
+AND
+  f.fieldId = p.fieldId;
+
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=55861.93..7210599.43 rows=1 width=136)
+   Join Filter: ((traj.traj && p.bbox) AND (traj.traj && f.bbox) AND _st_intersects(traj.traj, p.bbox) AND _st_intersects(traj.traj, f.bbox))
+   ->  Function Scan on traj  (cost=0.00..0.01 rows=1 width=32)
+   ->  Nested Loop  (cost=55861.93..7206684.38 rows=7602 width=256)
+         ->  Index Scan using trangeidx on fields f  (cost=0.28..8.29 rows=1 width=128)
+               Index Cond: ('1999-10-14 03:49:01.772609+00'::timestamp with time zone <@ trange)
+         ->  Bitmap Heap Scan on pixels2 p  (cost=55861.66..7176832.11 rows=2984398 width=144)
+               Recheck Cond: (fieldid = f.fieldid)
+               ->  Bitmap Index Scan on fieldidx2  (cost=0.00..55115.56 rows=2984398 width=0)
+                     Index Cond: (fieldid = f.fieldid)
+
+  pixelid  |  pidx   |            st_astext             |   fval   
+-----------+---------+----------------------------------+----------
+ 302037104 | 1579615 | POINT(-41.100017383 0.900048875) | 0.222927
+(1 row)
+
+Time: 81019.184 ms
+
+#####
+
+#########
+# FWIW:
+SELECT fieldId FROM fields as f,
+      ST_SetSRID(ST_MakePoint(-41.1, 0.9),3786) as traj
+    WHERE
+      TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
+    AND
+      ST_INTERSECTS(traj, f.bbox)
+       fieldid       
+---------------------
+ 7480518274737971116
+(1 row)
+
+Time: 663.443 ms
+# IS RELATIVELY FAST
+#########
+
+explain SELECT 
+  (SELECT fieldId FROM fields as f,
+      ST_SetSRID(ST_MakePoint(-41.1, 0.9),3786) as traj
+    WHERE
+      TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
+    AND
+      ST_INTERSECTS(traj, f.bbox)
+  ) as fieldId, 
+  p.pixelId, ST_AsText(ST_Centroid(p.bbox)), p.fval
+FROM 
+  pixels2 as p,
+  ST_SetSRID(ST_MakePoint(-41.1, 0.9),3786) as traj
+WHERE
+  p.fieldId = fieldId
+AND
+  ST_INTERSECTS(traj, p.bbox);
+
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=8.57..16819697.40 rows=448 width=132)
+   Join Filter: ((traj.traj && p.bbox) AND _st_intersects(traj.traj, p.bbox))
+   InitPlan 1 (returns $0)
+     ->  Nested Loop  (cost=0.28..8.57 rows=1 width=8)
+           Join Filter: ((traj_1.traj && f.bbox) AND _st_intersects(traj_1.traj, f.bbox))
+           ->  Index Scan using trangeidx on fields f  (cost=0.28..8.29 rows=1 width=128)
+                 Index Cond: ('1999-10-14 03:49:01.772609+00'::timestamp with time zone <@ trange)
+           ->  Function Scan on traj_1  (cost=0.00..0.01 rows=1 width=32)
+   ->  Function Scan on traj  (cost=0.00..0.01 rows=1 width=32)
+   ->  Seq Scan on pixels2 p  (cost=0.00..16467154.60 rows=1342979 width=132)
+         Filter: (fieldid = fieldid)
+
+       fieldid       |  pixelid  |                 st_astext                  |   fval   
+---------------------+-----------+--------------------------------------------+----------
+ 7480518274737971116 | 245638042 | POINT(-41.0999492981667 0.899993027333373) | -0.00289
+ 7480518274737971116 | 302037104 | POINT(-41.100017383 0.900048875)           | 0.222927
+(2 rows)
+
+Time: 3267627.736 ms
