@@ -67,7 +67,6 @@ c_skyToIdx(PG_FUNCTION_ARGS)
     /* Set up the Wcs struct */
     double CRPIX1 = DatumGetFloat8(GetAttributeByName(t, "crpix1", &isNull));
     double CRPIX2 = DatumGetFloat8(GetAttributeByName(t, "crpix2", &isNull));
-    fprintf(stderr, "CAW %f %f \n", CRPIX1, CRPIX2);
 
     struct wcsprm* wcsInfo; // defined in wcs.h
     wcsInfo = palloc(sizeof(struct wcsprm));
@@ -116,26 +115,12 @@ c_skyToIdx(PG_FUNCTION_ARGS)
 
     double xLin = pixOut[0];
     double yLin = pixOut[1];
-    fprintf(stderr, "LIN %f %f\n", xLin, yLin);
 
     double U = xLin - CRPIX1;
     double V = yLin - CRPIX2;
     double *uPoly, *vPoly;
     uPoly = polyElements(sipOrder, U);
     vPoly = polyElements(sipOrder, V);
-
-    fprintf(stderr, "U %f\n", U);
-    fprintf(stderr, "V %f\n", V);
-    fprintf(stderr, "uPoly ");
-    for (i=0; i<sipOrder+1; i++) {
-        fprintf(stderr, "%e ", *(uPoly+i));
-    }
-    fprintf(stderr, "\n");
-    fprintf(stderr, "vPoly ");
-    for (i=0; i<sipOrder+1; i++) {
-        fprintf(stderr, "%e ", *(vPoly+i));
-    }
-    fprintf(stderr, "\n");
 
     /* Create additional SIP modification */
     double F=0., G=0.;
@@ -151,16 +136,11 @@ c_skyToIdx(PG_FUNCTION_ARGS)
             G += sipBp * *(uPoly+i) * *(vPoly+j);
         }
     }
-    fprintf(stderr, "F %f\n", F);
-    fprintf(stderr, "G %f\n", G);
-
-    fprintf(stderr, "SIP %f %f\n", xLin+F, yLin+G);
-    fprintf(stderr, "FINAL %f %f\n", xLin + F + fitsToLsstPixels, yLin + G + fitsToLsstPixels);        
+   
     /* Final x,y coordinates */
     int xWarp = (int) (xLin + F + fitsToLsstPixels + 0.5);
     int yWarp = (int) (yLin + G + fitsToLsstPixels + 0.5);
     int pIdx  = xWarp + nPixX * yWarp;
-    fprintf(stderr, "INT %d %d %d\n", xWarp, yWarp, pIdx);
 
     pfree(wcsInfo);
     pfree(uPoly);
