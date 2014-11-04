@@ -173,6 +173,13 @@ AND
          ->  Bitmap Index Scan on pidxidx  (cost=0.00..24804.91 rows=1342979 width=0)
                Index Cond: (pidx = idx.idx)
 
+# NOTE: if I select the UDF value as "foo" this says:
+   ->  Bitmap Heap Scan on pixels3 p  (cost=5.29..376.54 rows=93 width=24)
+         Recheck Cond: (pidx = foo.foo)
+         ->  Bitmap Index Scan on pidxidx3  (cost=0.00..5.27 rows=93 width=0)
+               Index Cond: (pidx = foo.foo)
+
+
   pixelid  |  pidx   |      ra       |    decl     |   fval   
 -----------+---------+---------------+-------------+----------
  831023078 | 1579615 | -41.100017383 | 0.900048875 | 0.222927
