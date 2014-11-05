@@ -55,6 +55,8 @@ CREATE INDEX fieldidx2 ON pixels2 (fieldId);
 CREATE INDEX bboxidx2 ON pixels2 USING GIST (bbox);
 ALTER TABLE pixels2 ADD CONSTRAINT "pixels2_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
 CREATE INDEX pidxidx2 ON pixels2 (pidx);
+CREATE INDEX pfieldpidx2 ON pixels2 (fieldId, pidx);
+# For some reason I have duplicate entries in pixels2, lets use this to test the non-UNIQUE version
 
 ####
 
@@ -68,6 +70,7 @@ CREATE TABLE pixels3 (
 ALTER TABLE pixels3 ADD CONSTRAINT "pixels3_fieldid_fkey" FOREIGN KEY (fieldId) REFERENCES fields (fieldId) MATCH FULL;
 CREATE INDEX fieldidx3 ON pixels3 (fieldId);
 CREATE INDEX pidxidx3 ON pixels3 (pidx);
+CREATE UNIQUE INDEX pfieldpidx3 ON pixels3 (fieldId, pidx);
 
 ####
 
