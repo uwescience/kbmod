@@ -12,7 +12,11 @@
 
 # HOW TO BUILD:
 
-Window 1: rm skyToIdx.o skyToIdx.so ; cc -fpic -c skyToIdx.c -I/opt/local/include -I/opt/local/include/postgresql93/server/ ; cc -bundle -flat_namespace -undefined suppress -lwcs -L/opt/local/lib -o skyToIdx.so skyToIdx.o
+Window 1: 
+   OS X:
+      rm skyToIdx.o skyToIdx.so ; cc -O3 -fpic -c skyToIdx.c -I/opt/local/include -I/opt/local/include/postgresql93/server/ ; cc -O3 -bundle -flat_namespace -undefined suppress -lwcs -L/opt/local/lib -o skyToIdx.so skyToIdx.o
+   LINUX: 
+      rm skyToIdx.o skyToIdx.so ; cc -O3 -fpic -c skyToIdx.c -I/usr/local/include/ -I/usr/include/pgsql/server/; cc -O3 -shared -lwcs -L/usr/local/lib -o skyToIdx.so skyToIdx.o
 
 Window 2: \q
           psql -U postgres -d kbmod
