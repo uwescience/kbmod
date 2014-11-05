@@ -560,7 +560,7 @@ ALTER TABLE pixels ADD CONSTRAINT "pixels_fieldid_fkey" FOREIGN KEY (fieldId) RE
 
 Anyways, lets create a minimal table pixels3 for quick queries
 
-CREATE TABLE pixels3 AS SELECT pixelId, fieldId, pidx, fval, mask FROM pixels2;
+CREATE TABLE pixels3 AS SELECT pixelId, fieldId, pidx, fval, mask FROM pixels;
 ALTER TABLE pixels3 ADD PRIMARY KEY (pixelId);
 
 ######### INSTALL WCSLIB FOR UDF
@@ -600,8 +600,8 @@ chmod og-rw authorized_keys
 sudo yum install git
 git clone https://github.com/uwescience/kbmod.git
 cd kbmod
-cc -fpic -c skyToIdx.c -I/usr/local/include/ -I/usr/include/pgsql/server/
-cc -shared -lwcs -L/usr/local/lib -o skyToIdx.so skyToIdx.o
+cc -O3 -fpic -c skyToIdx.c -I/usr/local/include/ -I/usr/include/pgsql/server/
+cc -O3 -shared -lwcs -L/usr/local/lib -o skyToIdx.so skyToIdx.o
 
 psql93 -U postgres -d kbmod
 CREATE OR REPLACE FUNCTION c_skyToIdx(wcs, double precision, double precision) RETURNS integer
@@ -619,5 +619,11 @@ sudo vi /etc/ld.so.conf
 sudo ldconfig
 
 when I originally installed the package.  That was tricky...
+
+
+# Try a compound index to speed up queries:
+kbmod=# CREATE UNIQUE INDEX pfieldpidx ON pixels (fieldId, pidx);
+CREATE INDEX
+Time: 3265335.753 ms
 
 
