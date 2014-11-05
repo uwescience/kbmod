@@ -173,6 +173,7 @@ AND
          ->  Bitmap Index Scan on pidxidx  (cost=0.00..24804.91 rows=1342979 width=0)
                Index Cond: (pidx = idx.idx)
 
+
 # NOTE: if I select the UDF value as "foo" this says:
    ->  Bitmap Heap Scan on pixels3 p  (cost=5.29..376.54 rows=93 width=24)
          Recheck Cond: (pidx = foo.foo)
@@ -187,15 +188,35 @@ AND
 
 Time: 1813.084 ms
 
+# ADDED index pfieldpidx:
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=6.83..26568.81 rows=38 width=32)
+   ->  Nested Loop  (cost=0.57..16.91 rows=1 width=20)
+         ->  Nested Loop  (cost=0.57..16.89 rows=1 width=452)
+               ->  Nested Loop  (cost=0.28..8.57 rows=1 width=8)
+                     Join Filter: ((traj.traj && f.bbox) AND _st_intersects(traj.traj, f.bbox))
+                     ->  Function Scan on traj  (cost=0.00..0.01 rows=1 width=32)
+                     ->  Index Scan using trangeidx on fields f  (cost=0.28..8.29 rows=1 width=128)
+                           Index Cond: ('1999-10-14 03:49:01.772609+00'::timestamp with time zone <@ trange)
+               ->  Index Scan using fieldwcsidx on wcs w  (cost=0.29..8.31 rows=1 width=444)
+                     Index Cond: (fieldid = f.fieldid)
+         ->  Function Scan on c_skytoidx idx  (cost=0.00..0.01 rows=1 width=4)
+   ->  Bitmap Heap Scan on pixels p  (cost=6.26..26484.75 rows=6715 width=40)
+         Recheck Cond: ((fieldid = f.fieldid) AND (pidx = idx.idx))
+         ->  Bitmap Index Scan on pfieldpidx  (cost=0.00..4.58 rows=6715 width=0)
+               Index Cond: ((fieldid = f.fieldid) AND (pidx = idx.idx))
+
+
 # PIXELS1 vs PIXELS2 vs PIXELS3
 
 SELECT p.pixelId, p.pidx, p.ra, p.decl, p.fval
 FROM
-  ST_SetSRID(ST_MakePoint(-41.1, 0.93),3786) as traj,
+  ST_SetSRID(ST_MakePoint(-41.13, 0.9723),3786) as traj,
   pixels as p,
   fields as f,
   wcs as w,
-  c_skyToIdx(w, -41.1, 0.93) as idx
+  c_skyToIdx(w, -41.13, 0.9723) as idx
 WHERE
   TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
 AND
@@ -214,15 +235,31 @@ AND
 
 Time: 810.350 ms
 
+# With the pfieldpidx:
+  pixelid  |  pidx   |      ra       |    decl     |  fval   
+-----------+---------+---------------+-------------+---------
+ 831023350 | 1579887 | -41.100018778 | 0.929960763 | -0.1534
+(1 row)
+
+Time: 23.614 ms
+
+# And with -O3:
+  pixelid  |  pidx   |      ra       |    decl     |  fval   
+-----------+---------+---------------+-------------+---------
+ 831023350 | 1579887 | -41.100018778 | 0.929960763 | -0.1534
+(1 row)
+
+Time: 12.401 ms, 141.860, 50.364, 48.559
+
 ####
 
 SELECT p.pixelId, p.pidx, ST_AsText(ST_Centroid(p.bbox)), p.fval
 FROM
-  ST_SetSRID(ST_MakePoint(-41.1, 0.93),3786) as traj,
+  ST_SetSRID(ST_MakePoint(-41.12, 0.92239),3786) as traj,
   pixels2 as p,
   fields as f,
   wcs as w,
-  c_skyToIdx(w, -41.1, 0.93) as idx
+  c_skyToIdx(w, -41.12, 0.92239) as idx
 WHERE
   TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
 AND
@@ -241,15 +278,21 @@ AND
 
 Time: 1021.117 ms
 
+# With -O3 only:
+Time: 778.437 ms
+
+# With -O3 and non-unique index
+Time: 591.037 ms, 274.095, 135.460, 27.496, 81.859, 1505.307, 652.946
+
 ####
 
 SELECT p.pixelId, p.pidx, p.fval
 FROM
-  ST_SetSRID(ST_MakePoint(-41.1, 0.93),3786) as traj,
+  ST_SetSRID(ST_MakePoint(-41.119, 0.9126),3786) as traj,
   pixels3 as p,
   fields as f,
   wcs as w,
-  c_skyToIdx(w, -41.1, 0.93) as idx
+  c_skyToIdx(w, -41.119, 0.9126) as idx
 WHERE
   TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
 AND
@@ -268,3 +311,9 @@ AND
 
 Time: 857.961 ms
 
+# With -O3 only
+Time: 9.750 ms
+Time: 12.760 ms
+
+# And with O3 and index:
+3.066, 114.694, 38.596, 14.193
