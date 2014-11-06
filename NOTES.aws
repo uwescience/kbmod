@@ -626,4 +626,18 @@ kbmod=# CREATE UNIQUE INDEX pfieldpidx ON pixels (fieldId, pidx);
 CREATE INDEX
 Time: 3265335.753 ms
 
+# And a covering index..!
+kbmod=# CREATE UNIQUE INDEX pixels3covering ON pixels3 (fieldId, pidx, fval, mask);
+CREATE INDEX
+Time: 1457389.155 ms
+kbmod=# CLUSTER pixels3 USING pixels3covering;
+Time: 12346885.418 ms
+
+#### NOTE: this is about 1/4000 of the total data.  Scaling up, ingest will take
+  1319s * 10x since I split up the file by 10 * 4000 = 610 days
+
+And the building of the covering index will take 12346885 / 1000 * 4000 / 3600 / 24 = 571 days
+
+It seems like for the final product we will need to do some of partitioning so that the ingest can
+happen in parallel.   Something like x100 partitioning would make this managable.
 
