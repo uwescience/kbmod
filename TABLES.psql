@@ -71,6 +71,9 @@ ALTER TABLE pixels3 ADD CONSTRAINT "pixels3_fieldid_fkey" FOREIGN KEY (fieldId) 
 CREATE INDEX fieldidx3 ON pixels3 (fieldId);
 CREATE INDEX pidxidx3 ON pixels3 (pidx);
 CREATE UNIQUE INDEX pfieldpidx3 ON pixels3 (fieldId, pidx);
+# MAKE A COVERING INDEX
+CREATE UNIQUE INDEX pixels3covering ON pixels3 (fieldId, pidx, fval, mask);
+CLUSTER pixels3 USING pixels3covering;
 
 ####
 
