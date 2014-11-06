@@ -286,13 +286,14 @@ Time: 591.037 ms, 274.095, 135.460, 27.496, 81.859, 1505.307, 652.946
 
 ####
 
+EXPLAIN ANALYZE
 SELECT p.pixelId, p.pidx, p.fval
 FROM
-  ST_SetSRID(ST_MakePoint(-41.119, 0.9126),3786) as traj,
+  ST_SetSRID(ST_MakePoint(-41.1, 0.917),3786) as traj,
   pixels3 as p,
   fields as f,
   wcs as w,
-  c_skyToIdx(w, -41.119, 0.9126) as idx
+  c_skyToIdx(w, -41.1, 0.917) as idx
 WHERE
   TIMESTAMP WITH TIME ZONE '1999-10-14 03:49:01.772609z' <@ f.trange
 AND
