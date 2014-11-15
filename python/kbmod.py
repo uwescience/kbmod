@@ -27,10 +27,10 @@ class Database(object):
             raise PermissionError    
         jsonData = json.load(open(authfile, "r"))
         try:
-            host = jsonData["host"]
-            database = jsonData["database"]
-            user = jsonData["user"]
-            password = jsonData["password"]
+            host = jsonData["kbmod"]["host"]
+            database = jsonData["kbmod"]["database"]
+            user = jsonData["kbmod"]["user"]
+            password = jsonData["kbmod"]["password"]
         except:
             raise KeyError
         return host, database, user, password
@@ -91,6 +91,9 @@ class Point(object):
             return self.time
         if isinstance(self.time, datetime.datetime):
             return self.time.__str__()
+
+    def __str__(self):
+        return "%s : %.5f %.5f" % (self.time, self.x, self.y)
 
 class LinearTrajectory(object):
     def __init__(self, x0, y0, t0, xp, yp):
@@ -184,16 +187,20 @@ class K06Sb2Q(LinearTrajectory):
 if __name__ == "__main__":
     db = Database()
 
-    ra   = -41.1
-    dec  = 0.93
-    
-    time1 = datetime.datetime(1999, 10, 14, 3, 49, 1, 772609, tzinfo=pytz.UTC)
-    time = "1999-10-14 03:49:01.772609z"
-    
-    pt = Point(ra, dec, time)
-    pt1 = Point(ra, dec, time1)
+    # Test code
+    if False:
+        ra   = -41.1
+        dec  = 0.93
 
-    print db.queryPoint(pt)
-    print db.queryPoint(pt1)
+        time1 = datetime.datetime(1999, 10, 14, 3, 49, 1, 772609, tzinfo=pytz.UTC)
+        time = "1999-10-14 03:49:01.772609z"
+
+        pt = Point(ra, dec, time)
+        pt1 = Point(ra, dec, time1)
+
+        print db.queryPoint(pt)
+        print db.queryPoint(pt1)
+
     testTraj = K06Sb2Q(db.times)
+    import pdb; pdb.set_trace()
     print db.queryPoint(testTraj.p0)
