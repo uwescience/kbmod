@@ -1,0 +1,58 @@
+Lets take a step back and think about the overall design of this.
+
+Do we need 1e12 pixels in a table?  MAYBE NOT
+Do we need access to all the fields for a given trajectory?   NO
+
+Lets think about the following design, and think about what a query looks like on a given night
+
+  * A Trajectory table.  On a single night, it has a deltaT and deltaPos
+  * An ImageSet table.  For SDSS primary key would be a run,camcol,filter tuple.  
+      For LSST this would be a single focal plane exposure.
+      It has a deltaT and deltaPos bbox.  So a set of contiguous pixels.
+
+We can then ask the question:
+
+  * On a given night for a given trajectory:
+  * Which ImageSet (if any) does the trajectory deltaT,deltaPos bbox overlap?
+  * Which Image within the ImageSet does it overlap (using a per-Image deltaT,deltaPos bbox)
+  * Which Pixel within an Image does it overlap (using our UDF)
+
+Its an open question if we need a PixelSet table, or if we just keep the files on disk and access the 
+images that we need.  You can imagine that we have, for a set of trajectories, a set of these overlaps:
+
+ TrajId | ImageId | PixelId
+
+To batch the query up, we can group on ImageId, access that image on disk and read out the relevant pixels
+in a single image-access operation, updating the relevant trajectories as we go.  
+
+
+CREATE TABLE ImageSetSDSS ( 
+    setId INTEGER PRIMARY KEY,
+    run INTEGER,
+    camcol SMALLINT,
+    filter VARCHAR(1),
+    bbox GEOMETRY(POLYGON,3786),
+    trange TSTZRANGE
+);
+\i /home/ec2-user/data/v2_imageset.sql;
+
+CREATE TABLE Image ( 
+    imageId INTEGER PRIMARY KEY,
+    setId INTEGER,
+    positionId INTEGER,
+    bbox GEOMETRY(POLYGON,3786),
+    tmid TIMESTAMP WITH TIME ZONE,
+    trange TSTZRANGE
+);
+# autovacuum=off
+set work_mem='96MB';
+\i /home/ec2-user/data/v2_image.sql;
+# autovacuum=on
+
+CREATE TABLE Pixels ( 
+    pixelId BIGSERIAL PRIMARY KEY,
+    imageId INTEGER,
+    pidx INTEGER,
+    fval REAL,
+    mask INTEGER
+);
