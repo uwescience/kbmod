@@ -35,9 +35,12 @@ CREATE TABLE ImageSetSDSS (
     trange TSTZRANGE
 );
 \i /home/ec2-user/data/v2_imageset.sql;
+CREATE INDEX set_bbox_idx ON ImageSetSDSS USING GIST (bbox);
+CREATE INDEX set_trange_idx ON ImageSetSDSS USING GIST (trange);
+create index set_setid_run_idx on imagesetsdss (setid, run);
 
 CREATE TABLE Image ( 
-    imageId INTEGER PRIMARY KEY,
+    imageId BIGINT PRIMARY KEY,
     setId INTEGER,
     positionId INTEGER,
     bbox GEOMETRY(POLYGON,3786),
@@ -49,6 +52,31 @@ set work_mem='96MB';
 \i /home/ec2-user/data/v2_image.sql;
 # autovacuum=on
 
+CREATE INDEX image_bbox_idx ON Image USING GIST (bbox);
+CREATE INDEX image_trange_idx ON Image USING GIST (trange);
+ALTER TABLE Image ADD CONSTRAINT "image_setid_fkey" FOREIGN KEY (setId) REFERENCES ImageSetSDSS (setId) MATCH FULL;
+
+CREATE TABLE Trajectory (
+   trajId    BIGSERIAL PRIMARY KEY, 
+   t0        TIMESTAMP WITH TIME ZONE,
+   ra0       DOUBLE PRECISION,
+   dec0      DOUBLE PRECISION,
+   delta_ra  DOUBLE PRECISION,
+   delta_dec DOUBLE PRECISION
+);
+
+INSERT INTO Trajectory (t0, ra0, dec0, delta_ra, delta_dec) 
+ (SELECT tmid, st_x(ST_Centroid(bbox)), st_y(ST_Centroid(bbox)), 7.7e-8, 7.7e-8 FROM IMAGE ORDER BY RANDOM() LIMIT 10);
+
+INSERT INTO Trajectory (t0, ra0, dec0, delta_ra, delta_dec) 
+ (SELECT tmid, st_x(ST_Centroid(bbox)), st_y(ST_Centroid(bbox)), 7.7e-8, 7.7e-8 FROM IMAGE LIMIT 10);
+
+CREATE TABLE TrajExtent (
+    trajId   INTEGER,
+    setId    INTEGER,
+    bbox     GEOMETRY(POLYGON,3786)
+);
+
 CREATE TABLE Pixels ( 
     pixelId BIGSERIAL PRIMARY KEY,
     imageId INTEGER,
@@ -56,3 +84,138 @@ CREATE TABLE Pixels (
     fval REAL,
     mask INTEGER
 );
+
+####### FYI
+
+kbmod=# SELECT EXTRACT(EPOCH FROM UPPER(trange)-LOWER(trange)) AS seconds FROM imagesetsdss LIMIT 1;
+  date_part  
+-------------
+ 18966.93662
+(1 row)
+
+kbmod=# select (upper(trange)-lower(trange)) from imagesetsdss limit 1;
+    ?column?    
+----------------
+ 05:16:06.93662
+(1 row)
+
+#########
+
+# First, get the sets that something overlaps
+SELECT
+  traj.trajId, traj.t0,
+  set.setId, set.run, set.camcol, set.filter, set.trange
+FROM
+  Trajectory as traj,
+  ImageSetSDSS as set,
+  EXTRACT(EPOCH FROM LOWER(set.trange)-traj.t0) as dt0,
+  EXTRACT(EPOCH FROM UPPER(set.trange)-traj.t0) as dt1
+WHERE
+  ST_INTERSECTS(ST_SetSRID(ST_MakePoint((traj.ra0  + dt0 * traj.delta_ra), (traj.dec0 + dt0 * traj.delta_dec)),3786), set.bbox)
+AND
+  ST_INTERSECTS(ST_SetSRID(ST_MakePoint((traj.ra0  + dt1 * traj.delta_ra), (traj.dec0 + dt1 * traj.delta_dec)),3786), set.bbox)
+;
+
+# Next level, find the actual images!
+  traj.trajId, 
+  set.setId, set.run, set.camcol, set.filter, 
+  im.imageId, im.positionId, ST_AsText(ST_Centroid(im.bbox)), im.tmid,
+  (traj.ra0  + im_dt * traj.delta_ra) as raInImage,
+  (traj.dec0 + im_dt * traj.delta_dec) as decInImage
+
+
+SELECT
+  im.imageId, traj.trajId
+FROM
+  Trajectory as traj,
+  ImageSetSDSS as set,
+  Image as im,
+  EXTRACT(EPOCH FROM LOWER(set.trange)-traj.t0) as set_dt0,
+  EXTRACT(EPOCH FROM UPPER(set.trange)-traj.t0) as set_dt1,
+  EXTRACT(EPOCH FROM im.tmid-traj.t0) as im_dt
+WHERE
+  im.setId = set.setId
+AND
+  ST_INTERSECTS(ST_SetSRID(ST_MakePoint((traj.ra0  + set_dt0 * traj.delta_ra), (traj.dec0 + set_dt0 * traj.delta_dec)),3786), set.bbox)
+AND
+  ST_INTERSECTS(ST_SetSRID(ST_MakePoint((traj.ra0  + set_dt1 * traj.delta_ra), (traj.dec0 + set_dt1 * traj.delta_dec)),3786), set.bbox)
+AND
+  ST_INTERSECTS(ST_SetSRID(ST_MakePoint((traj.ra0  + im_dt * traj.delta_ra),   (traj.dec0 + im_dt * traj.delta_dec)),3786), im.bbox)
+;
+
+Time: 1629.311 ms
+
+######
+# Adding Runs table for better boundary selection
+
+create table Runs as select run, min(lower(trange)) as tmin, max(upper(trange)) as tmax from imagesetsdss group by run order by run;
+
+
+SELECT
+  traj.trajId,
+  runs.run, 
+  ST_SetSRID(ST_MakeLine(ARRAY[ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM runs.tmin-traj.t0) * traj.delta_ra, 
+                                            traj.dec0 + EXTRACT(EPOCH FROM runs.tmin-traj.t0) * traj.delta_dec), 
+                               ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM runs.tmax-traj.t0) * traj.delta_ra, 
+                                            traj.dec0 + EXTRACT(EPOCH FROM runs.tmax-traj.t0) * traj.delta_dec)]),3786) as tline
+FROM
+  Trajectory as traj,
+  Runs as runs
+;
+
+CREATE TABLE TrajectoryLocation as 
+   ...
+
+SELECT
+  im.imageId, loc.trajId
+FROM
+  Image as im,
+  ImageSetSDSS as set,
+  TrajectoryLocation as loc
+WHERE
+  ST_INTERSECTS(loc.tline, im.bbox)
+AND
+  set.run = loc.run
+AND 
+  set.setId = im.setId;
+
+
+
+# So as to only calculate trun0, trun1 once:
+WITH TL AS (
+    WITH T AS (
+      SELECT runs.run as run,
+             traj.trajId as trajId,
+             traj.ra0 as ra0,
+             traj.dec0 as dec0,
+             traj.delta_ra as delta_ra,
+             traj.delta_dec as delta_dec,
+             EXTRACT(EPOCH FROM runs.tmin-traj.t0) as trun0,
+             EXTRACT(EPOCH FROM runs.tmax-traj.t0) as trun1
+      FROM
+             Trajectory as traj,
+             Runs as runs
+      ) 
+    SELECT
+       T.run as run,
+       T.trajId as trajId,
+       ST_SetSRID(ST_MakeLine(ARRAY[ST_MakePoint(T.ra0  + T.trun0 * T.delta_ra, 
+                                                 T.dec0 + T.trun0 * T.delta_dec), 
+                                    ST_MakePoint(T.ra0  + T.trun1 * T.delta_ra, 
+                                                 T.dec0 + T.trun1 * T.delta_dec)]),3786) as tline
+    FROM 
+      T
+  )
+SELECT 
+  im.imageId, TL.trajId
+FROM
+  Image as im,
+  ImageSetSDSS as set,
+  TL
+WHERE
+  ST_INTERSECTS(TL.tline, im.bbox)
+AND
+  set.run = TL.run
+AND 
+  set.setId = im.setId;
+
