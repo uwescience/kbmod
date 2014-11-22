@@ -4,6 +4,7 @@ import json
 import datetime
 import dateutil.parser
 import md5
+import numpy as np
 
 def getCursor():
     authdir  = ".kbmod"
@@ -23,7 +24,7 @@ def makeSetHash(run, camcol, filterName):
     return int(md5.new(" ".join(map(str, [run, camcol, filterName]))).hexdigest(), 16) % 2**(32-1)
 
 def makeImageHash(run, camcol, position, filterName):
-    return int(md5.new(" ".join(map(str, [run, camcol, position, filterName]))).hexdigest(), 16) % 2**(32-1)
+    return int(md5.new(" ".join(map(str, [run, camcol, position, filterName]))).hexdigest(), 16) % 2**(64-1)
 
 def makeImageSet(cursor):
     sqlIn = """
@@ -78,24 +79,35 @@ def makeImage(cursor):
     results = cursor.fetchall()
 
     halfexp = datetime.timedelta(seconds=0.5*53.9075) 
-    sqlOut = "BEGIN TRANSACTION;\nINSERT INTO Image (imageId, setId, positionId, bbox, tmid, trange) VALUES\n"
-    for result in results:
-        run, camcol, position, filterName, tMid, raMin, raMax, decMin, decMax = result
-        setId  = makeSetHash(run, camcol, filterName)
-        imageId = makeImageHash(run, camcol, position, filterName)
-        tMid = dateutil.parser.parse(tMid)
-        tMin = tMid - halfexp
-        tMax = tMid + halfexp
-        bbox   = "ST_GeomFromText('POLYGON((%f %f, %f %f, %f %f, %f %f, %f %f))',3786)"%(
-            raMin, decMin, raMax, decMin, raMax, decMax, raMin, decMax, raMin, decMin)
-        trange = "[%s, %s]" % (tMin, tMax)
-        sqlOut += "  (%d, %d, %d, %s, '%s', '%s'),\n" % (imageId, setId, position, bbox, tMid, trange)
-    sqlOut = sqlOut[:-2]+"\n;COMMIT;"
-    return sqlOut
+
+    aruns = np.array([x[0] for x in results])
+    uruns = list(set(aruns))
+    uruns.sort()
+    output = {}
+    for urun in uruns:
+        idx = np.where(aruns==urun)[0]
+        sqlOut = "BEGIN TRANSACTION;\nINSERT INTO Image (imageId, setId, positionId, bbox, tmid, trange) VALUES\n"
+        for i in idx:
+            result = results[i]
+            run, camcol, position, filterName, tMid, raMin, raMax, decMin, decMax = result
+            setId  = makeSetHash(run, camcol, filterName)
+            imageId = makeImageHash(run, camcol, position, filterName)
+            tMid = dateutil.parser.parse(tMid)
+            tMin = tMid - halfexp
+            tMax = tMid + halfexp
+            bbox   = "ST_GeomFromText('POLYGON((%f %f, %f %f, %f %f, %f %f, %f %f))',3786)"%(
+                raMin, decMin, raMax, decMin, raMax, decMax, raMin, decMax, raMin, decMin)
+            trange = "[%s, %s]" % (tMin, tMax)
+            sqlOut += "  (%d, %d, %d, %s, '%s', '%s'),\n" % (imageId, setId, position, bbox, tMid, trange)
+        sqlOut = sqlOut[:-2]+";\nCOMMIT;\n"
+        output[urun] = sqlOut
+    return output
 
 if __name__ == "__main__":
     cursor = getCursor()    
     sqlSet = makeImageSet(cursor)
-    sqlIm  = makeImage(cursor)
     open("v2_imageset.sql", "w").write(sqlSet)
-    open("v2_image.sql", "w").write(sqlIm)
+
+    sqlIms = makeImage(cursor)
+    for key, value in sqlIms.items():
+        open("v2_image_%d.sql"%key, "w").write(value)
