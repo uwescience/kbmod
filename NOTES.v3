@@ -12,6 +12,8 @@ CREATE TABLE ImageSetSDSS (
     bbox GEOMETRY(POLYGON,3786),
     trange TSTZRANGE
 );
+CREATE INDEX set_bbox_idx ON ImageSetSDSS USING gist (bbox gist_geometry_ops_nd);
+CLUSTER ImageSetSDSS USING set_bbox_idx;
 
 ####
 
@@ -21,6 +23,8 @@ SELECT run,
     MAX(UPPER(trange)) AS tmax,
     ST_SetSRID(ST_Extent(bbox), 3786) as bbox
 FROM ImageSetSDSS GROUP BY run ORDER BY run;
+CREATE INDEX run_bbox_idx ON Run USING gist (bbox gist_geometry_ops_nd);
+CLUSTER Run USING run_bbox_idx;
 
 ####
 
@@ -39,6 +43,7 @@ UPDATE Image SET bbox3d =
 ALTER TABLE Image ADD CONSTRAINT "image_setid_fkey" FOREIGN KEY (setId) REFERENCES ImageSetSDSS (setId) MATCH FULL;
 CREATE INDEX image_bbox3d_idx ON Image USING gist (bbox3d gist_geometry_ops_nd);
 CLUSTER Image USING image_bbox3d_idx;
+CREATE INDEX image_set_idx ON Image (setId);
 
 ####
 
@@ -62,7 +67,7 @@ for SDSS but could be an Exposure for LSST.  We have 18 sets per run for SDSS, a
 per run/night for LSST.  We limit the number of trajectory evaluations by doing it per run.  Since
 this is likely to be large, this is probably a long term win.  
 
-We have 2 sets of queries to test this
+We have 2 sets of queries to test this (and then additional sub-optimizations)
 
 
 # Q1, version A  (Q1A; slices on sets)
