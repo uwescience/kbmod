@@ -45,7 +45,7 @@ CREATE TABLE Image (
     positionId INTEGER,
     bbox GEOMETRY(POLYGON,3786),
     tmid TIMESTAMP WITH TIME ZONE,
-    trange TSTZRANGE
+    trange TSTZRANGE,
 );
 # autovacuum=off
 set work_mem='96MB';
