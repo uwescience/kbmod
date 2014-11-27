@@ -40,7 +40,7 @@ class Database(object):
         self.db.cur.execute(sql)
 
     def getTimes(self):
-        sql = """SELECT tmid FROM fields"""
+        sql = """SELECT tmid FROM image"""
         return self.db.query(sql)
 
     def queryPoint(self, point):
