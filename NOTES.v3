@@ -1,0 +1,176 @@
+CREATE DATABASE kbmod3;
+\c kbmod3
+CREATE EXTENSION postgis;
+
+####
+
+CREATE TABLE ImageSetSDSS ( 
+    setId INTEGER PRIMARY KEY,
+    run INTEGER,
+    camcol SMALLINT,
+    filter VARCHAR(1),
+    bbox GEOMETRY(POLYGON,3786),
+    trange TSTZRANGE
+);
+
+####
+
+CREATE TABLE Run AS 
+SELECT run, 
+    MIN(LOWER(trange)) AS tmin, 
+    MAX(UPPER(trange)) AS tmax,
+    ST_SetSRID(ST_Extent(bbox), 3786) as bbox
+FROM ImageSetSDSS GROUP BY run ORDER BY run;
+
+####
+
+CREATE TABLE Image ( 
+    imageId BIGINT PRIMARY KEY,
+    setId INTEGER,
+    positionId INTEGER,
+    bbox GEOMETRY(POLYGON,3786),
+    tmid TIMESTAMP WITH TIME ZONE,
+    trange TSTZRANGE,
+    bbox3d GEOMETRY
+);
+UPDATE Image SET bbox3d = 
+  ST_ConvexHull(ST_Collect(ST_Makepoint(ST_xmin(bbox), ST_ymin(bbox), EXTRACT(EPOCH FROM LOWER (trange))),
+                           ST_Makepoint(ST_xmax(bbox), ST_ymax(bbox), EXTRACT(EPOCH FROM UPPER (trange)))));
+ALTER TABLE Image ADD CONSTRAINT "image_setid_fkey" FOREIGN KEY (setId) REFERENCES ImageSetSDSS (setId) MATCH FULL;
+CREATE INDEX image_bbox3d_idx ON Image USING gist (bbox3d gist_geometry_ops_nd);
+CLUSTER Image USING image_bbox3d_idx;
+
+####
+
+CREATE TABLE Trajectory (
+   trajId    BIGSERIAL PRIMARY KEY, 
+   t0        TIMESTAMP WITH TIME ZONE,
+   ra0       DOUBLE PRECISION,
+   dec0      DOUBLE PRECISION,
+   delta_ra  DOUBLE PRECISION,
+   delta_dec DOUBLE PRECISION
+);
+
+INSERT INTO Trajectory (t0, ra0, dec0, delta_ra, delta_dec) 
+ (SELECT tmid, ST_x(ST_Centroid(bbox)), ST_y(ST_Centroid(bbox)), 7.7e-8, 7.7e-8 FROM Image LIMIT 1);
+
+##### 
+
+OK this took a while to parse out.  The question is, do you do an initial culling of images by 
+using a "run", which can be thought of as a night of data, or a "set", which is a (run,camcol,filter)
+for SDSS but could be an Exposure for LSST.  We have 18 sets per run for SDSS, and will have ~1000 sets 
+per run/night for LSST.  We limit the number of trajectory evaluations by doing it per run.  Since
+this is likely to be large, this is probably a long term win.  
+
+We have 2 sets of queries to test this
+
+
+# Q1, version A  (Q1A; slices on sets)
+WITH TL AS (
+    SELECT
+       set.setId as setId,
+       traj.trajId as trajId,
+       ST_MakeLine(ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM LOWER(set.trange)-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM LOWER(set.trange)-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM LOWER(set.trange))), 
+                   ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM UPPER(set.trange)-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM UPPER(set.trange)-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM UPPER(set.trange)))) as tline
+    FROM 
+       Trajectory as traj,
+       ImageSetSDSS as set
+  )
+SELECT 
+  im.imageId, TL.setId, TL.trajId
+FROM
+  Image as im,
+  TL
+WHERE
+  im.bbox3d &&& TL.tline
+AND
+  im.setId = TL.setId
+;
+
+# Q1B
+WITH TL AS (
+    SELECT
+       set.setId as setId,
+       traj.trajId as trajId,
+       ST_MakeLine(ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM LOWER(set.trange)-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM LOWER(set.trange)-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM LOWER(set.trange))), 
+                   ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM UPPER(set.trange)-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM UPPER(set.trange)-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM UPPER(set.trange)))) as tline
+    FROM 
+       Trajectory as traj,
+       ImageSetSDSS as set
+    WHERE
+        set.bbox && 
+        ST_MakeLine(ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM LOWER(set.trange)-traj.t0) * traj.delta_ra, 
+                                 traj.dec0 + EXTRACT(EPOCH FROM LOWER(set.trange)-traj.t0) * traj.delta_dec),
+                    ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM UPPER(set.trange)-traj.t0) * traj.delta_ra, 
+                                 traj.dec0 + EXTRACT(EPOCH FROM UPPER(set.trange)-traj.t0) * traj.delta_dec))
+  )
+SELECT 
+  im.imageId, TL.trajId
+FROM
+  Image as im,
+  TL
+WHERE
+  im.bbox3d &&& TL.tline
+AND
+  im.setId = TL.setId
+;
+
+# Query 2, version A (slices on runs)
+WITH TL AS (
+    SELECT
+       traj.trajId as trajId,
+       ST_MakeLine(ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM run.tmin)), 
+                   ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM run.tmax))) as tline
+    FROM 
+       Trajectory as traj,
+       Run as run
+  )
+SELECT 
+  im.imageId, TL.trajId
+FROM
+  Image as im,
+  TL
+WHERE
+  im.bbox3d &&& TL.tline
+;
+
+# Q2B
+WITH TL AS (
+    SELECT
+       traj.trajId as trajId,
+       ST_MakeLine(ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM run.tmin)), 
+                   ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM run.tmax))) as tline
+    FROM 
+       Trajectory as traj,
+       Run as run
+    WHERE
+       run.bbox && 
+       ST_MakeLine(ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_dec),
+                   ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_dec))
+  )
+SELECT 
+  im.imageId, TL.trajId
+FROM
+  Image as im,
+  TL
+WHERE
+  im.bbox3d &&& TL.tline
+;
