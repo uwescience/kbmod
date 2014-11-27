@@ -89,6 +89,34 @@ AND
   set.setId = im.setId;
 """
 
+sql3 = """
+WITH TL AS (
+    SELECT
+       runs.run as run,
+       traj.trajId as trajId,
+       ST_SetSRID(ST_MakeLine(ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM runs.tmin-traj.t0) * traj.delta_ra, 
+                                           traj.dec0 + EXTRACT(EPOCH FROM runs.tmin-traj.t0) * traj.delta_dec), 
+                              ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM runs.tmax-traj.t0) * traj.delta_ra, 
+                                           traj.dec0 + EXTRACT(EPOCH FROM runs.tmax-traj.t0) * traj.delta_dec)),3786) as tline
+    FROM 
+       Trajectory as traj,
+       Runs as runs
+  )
+SELECT 
+  im.imageId, TL.trajId
+FROM
+  Image as im,
+  ImageSetSDSS as set,
+  TL
+WHERE
+  ST_INTERSECTS(TL.tline, im.bbox)
+AND
+  set.run = TL.run
+AND 
+  set.setId = im.setId;
+"""
+
+
 print "\\timing on;"
 for npts in (5, 10, 50, 100):
     reset(None, npts)
