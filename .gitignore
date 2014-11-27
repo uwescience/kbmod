@@ -4,3 +4,4 @@ data/
 .ipynb_checkpoints
 *.o
 *.so
+*.pyc
