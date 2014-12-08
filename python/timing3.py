@@ -145,14 +145,16 @@ WHERE
 ;
 """
 
-for npts in (1, 5, 10, 50, 100): #, 500, 1000, 5000):
+for npts in (500, 1000, 5000):
     dt1As = []
     dt1Bs = []
     dt2As = []
     dt2Bs = []
     for i in range(10):
-        reset(db, npts); t0 = time.time(); r1A = db.db.query(sql1A); dt1A = time.time() - t0
-        reset(db, npts); t0 = time.time(); r1B = db.db.query(sql1B); dt1B = time.time() - t0
+        #reset(db, npts); t0 = time.time(); r1A = db.db.query(sql1A); dt1A = time.time() - t0
+        #reset(db, npts); t0 = time.time(); r1B = db.db.query(sql1B); dt1B = time.time() - t0
+        dt1A=1
+        dt1B=1
         reset(db, npts); t0 = time.time(); r2A = db.db.query(sql2A); dt2A = time.time() - t0
         reset(db, npts); t0 = time.time(); r2B = db.db.query(sql2B); dt2B = time.time() - t0
         dt1As.append(dt1A)

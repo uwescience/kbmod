@@ -45,6 +45,12 @@ CREATE INDEX image_bbox3d_idx ON Image USING gist (bbox3d gist_geometry_ops_nd);
 CLUSTER Image USING image_bbox3d_idx;
 CREATE INDEX image_set_idx ON Image (setId);
 
+# Not sure if I need this;
+ALTER TABLE Image ADD COLUMN runId INTEGER;
+UPDATE Image SET runId = s.run FROM ImageSetSDSS as s, Image as i WHERE s.setId=i.setId;
+CREATE INDEX image_run_idx ON Image (runId);
+ALTER TABLE Image DROP COLUMN runId;
+
 ####
 
 CREATE TABLE Trajectory (
@@ -173,6 +179,45 @@ WITH TL AS (
   )
 SELECT 
   im.imageId, TL.trajId
+FROM
+  Image as im,
+  TL
+WHERE
+  im.bbox3d &&& TL.tline
+;
+
+# Note that we also need to find the intersection Ra,Dec
+# And (at this stage) limit the search window to ~30 days = 2592000 seconds
+WITH TL AS (
+    SELECT
+       traj.trajId as trajId, 
+       traj.ra0 as ra0,
+       traj.dec0 as dec0,
+       traj.t0 as t0,
+       traj.delta_ra as delta_ra,
+       traj.delta_dec as delta_dec,
+       ST_MakeLine(ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM run.tmin)), 
+                   ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_dec,
+                                EXTRACT(EPOCH FROM run.tmax))) as tline
+    FROM 
+       Trajectory as traj,
+       Run as run
+    WHERE
+       run.bbox && 
+       ST_MakeLine(ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmin-traj.t0) * traj.delta_dec),
+                   ST_MakePoint(traj.ra0  + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_ra, 
+                                traj.dec0 + EXTRACT(EPOCH FROM run.tmax-traj.t0) * traj.delta_dec))
+    AND
+       ABS(EXTRACT(EPOCH FROM run.tmax-traj.t0)) < 2592000
+  )
+SELECT 
+  im.imageId, TL.trajId,
+  (TL.ra0  + EXTRACT(EPOCH FROM im.tmid-TL.t0) * TL.delta_ra) as raInt, 
+  (TL.dec0 + EXTRACT(EPOCH FROM im.tmid-TL.t0) * TL.delta_dec) as decInt
 FROM
   Image as im,
   TL

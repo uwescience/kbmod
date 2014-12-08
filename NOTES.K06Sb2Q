@@ -45,3 +45,15 @@ kbmod=# select fieldid, run, camcol, field, filter, ST_AsText(ST_Centroid(f.bbox
  6476345206148293674 | 6484 |      5 |   144 | g      | POINT(-42.7978812975 0.733916347)
  5130881440601242636 | 6504 |      5 |   146 | g      | POINT(-42.7874444469448 0.733743377749961)
 
+# V3 tables
+select s.setid, s.run, s.camcol, s.filter, i.positionid, ST_AsText(ST_Centroid(i.bbox3d)) from imagesetsdss as s, image as i where s.run=6474 and s.camcol=5 and s.filter='g' and i.positionid=143 and i.setid=s.setid;
+select s.setid, s.run, s.camcol, s.filter, i.positionid, ST_AsText(ST_Centroid(i.bbox3d)) from imagesetsdss as s, image as i where s.run=6484 and s.camcol=5 and s.filter='g' and i.positionid=144 and i.setid=s.setid;
+select s.setid, s.run, s.camcol, s.filter, i.positionid, ST_AsText(ST_Centroid(i.bbox3d)) from imagesetsdss as s, image as i where s.run=6504 and s.camcol=5 and s.filter='g' and i.positionid=146 and i.setid=s.setid;
+
+# Hmm, why are centroids different than above...?
+   setid    | run  | camcol | filter | positionid |         st_astext          
+------------+------+--------+--------+------------+----------------------------
+ 1176928605 | 6474 |      5 | g      |        143 | POINT(-42.841051 0.732816)
+ 733747347  | 6484 |      5 | g      |        144 | POINT(-42.791722 0.7330365)
+ 425952733  | 6504 |      5 | g      |        146 | POINT(-42.7812845 0.7328625)
+

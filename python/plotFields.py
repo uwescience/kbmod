@@ -1,108 +1,75 @@
+from database import Database
+import os, sys
+import ppygis
+import pandas as pd
+import numpy as np
+from matplotlib.patches import Polygon
+from matplotlib.collections import PolyCollection
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import datetime
 import urllib2
 
-import psycopg2
-import ppygis
-
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.collections import PolyCollection
-import matplotlib.pyplot as plt
-
-import datetime
 import pytz
 JDOFFSET = 2400000.5
 MJD0 = datetime.datetime(1858, 11, 17, 0, 0, 0, 0, tzinfo=pytz.UTC)
 
-conn = psycopg2.connect(host='54.191.82.210', user='postgres', password='kbmod', database='kbmod')
-cursor = conn.cursor()
+import seaborn as sns
+sns.set_style("ticks")
+sns.set_context("talk")
+
 cmapper = ["r", "g", "b", "m", "k"]
+db      = Database(doLoadUdf=False)
 
-def getEphem(tmid, name="308933"):
-    delta = tmid - MJD0
-    jd = JDOFFSET + (delta.days + (delta.seconds + delta.microseconds / 1.e6) / 86400.)
+def getFields(h5name="runs.h5", absRa=5):
+    if not os.path.isfile(h5name):
+        sql     = "select * from run where run>1000 order by run"
+        results = db.db.query(sql)
+        results.to_hdf(h5name, "df")
+    else:
+        results = pd.read_hdf(h5name, "df")
 
-    url  = "http://ssd.jpl.nasa.gov/horizons_batch.cgi?batch=1&COMMAND=\'%s\'&MAKE_EPHEM=\'YES\'&OBJ_DATA=\'NO\'" % (name)
-    url += "&CENTER=\'645\'&ANG_FORMAT=\'DEG\'&EXTRA_PREC=\'YES\'"
-    url += "&TABLE_TYPE=\'OBSERVER\'&TLIST=\'%f\'" % (jd)
-    url += "&QUANTITIES=\'1\'&CSV_FORMAT=\'NO\'"
-    #print url
+    # for some reason the first 2 runs (94,125) dont have camcol 4,5,6
 
-    search = urllib2.urlopen(url)
-    page   = search.read()
-    lines = page.split('\n')
-    for l in range(len(lines)):
-        if lines[l].startswith('$$SOE'):
-            hresults = lines[l+1]
-            break
-    fields = hresults.split()
-    ra = float(fields[-2])
-    if ra > 180:
-        ra -= 360.
-    decl = float(fields[-1])
-    return ra, decl
+    def draw():
+        for result in results.iterrows():
+            idx = result[0]
+            run = result[1].run
 
-def getFields():
-    sql = "select run, bbox, tmid from fields;"
-    cursor.execute(sql)
-    results = cursor.fetchall()
+            sql = "select s.run, i.bbox from imagesetsdss as s, image as i where i.setid=s.setid and s.run=%d"%(run)
+            results2 = db.db.query(sql)
 
-    fig = plt.figure()
-    ax = fig.gca(projection='3d')
+            # Run bbox
+            bbox  = ppygis.Geometry.read_ewkb(result[1]["bbox"])
+            ll, lr, ul, ur = bbox.rings[0].points[:4]
+            ras   = [p.x for p in (ll, lr, ul, ur, ll)]
+            decs  = [p.y for p in (ll, lr, ul, ur, ll)]
+            print result[1]["run"], idx, ras, decs
+            cpoly   = cmapper[idx%len(cmapper)]
+            ax.plot(ras, decs, lw=2, color=cpoly)
+            ax.text(ras[1], decs[1]+0.05, "Run %d"%result[1]["run"], color=cpoly)
 
-    verts  = []
-    ts     = []
-    runs   = []
-    for result in results:
-        run            = result[0]
-        bbox           = ppygis.Geometry.read_ewkb(result[1])
-        ll, lr, ul, ur = bbox.rings[0].points[:4]
-        tmid           = result[2]
-        if tmid.year < 2005:
-            continue
-        if ll.x > -40: 
-            continue
+            # Image bbox
+            polys = []
+            for r2 in results2.iterrows():
+                idx2   = r2[0]
+                bbox2  = ppygis.Geometry.read_ewkb(r2[1]["bbox"])
+                ll2, lr2, ul2, ur2 = bbox2.rings[0].points[:4]
+                ras2   = [p.x for p in (ll2, lr2, ul2, ur2, ll2)]
+                decs2  = [p.y for p in (ll2, lr2, ul2, ur2, ll2)]
+                polys.append(zip(ras2, decs2))
+            polyc = PolyCollection(polys)
+            ax.add_collection(polyc)
+            break # just plot first run
 
-        print tmid, tmid.year, bbox
+    fig, ax = plt.subplots(figsize=(14,7))
+    draw()
+    ax.set_xlim(-10, -6)
+    ax.set_ylim(-1.1, 1.4)
+    ax.set_xlabel("Right Ascension", weight="bold")
+    ax.set_ylabel("Declination", weight="bold")
 
-        ras            = [p.x for p in [ll, lr, ul, ur, ll]]
-        decs           = [p.y for p in [ll, lr, ul, ur, ll]]
-        verts.append(zip(ras,decs))
-        ts.append(tmid)
-        runs.append(run)
-
-
-    uruns   = list(set(runs))
-    cpoly   = [cmapper[c] for c in [uruns.index(r)%len(cmapper) for r in runs]]
-    toffset = [(t-ts[0]).total_seconds() for t in ts]
-
-    tmin = min(ts)
-    tmax = max(ts)
-    orbra  = []
-    orbdec = []
-    orbt   = []
-    teval  = tmin
-    while teval < tmax:
-        try:
-            ora, ordec = getEphem(teval)
-            #print teval, ora, ordec
-        except:
-            teval += datetime.timedelta(days=30)
-        else:
-            orbra.append(ora)
-            orbdec.append(ordec)
-            orbt.append(teval)
-            teval += datetime.timedelta(days=30)
-
-    poly = PolyCollection(verts, facecolors=cpoly)
-    poly.set_alpha(0.25)
-    ax.add_collection3d(poly, zs=toffset)
-    ax.set_xlabel('Ra', weight="bold")
-    ax.set_ylabel('Dec', weight="bold")
-    ax.set_zlabel('Time', weight="bold")
-
-    ax.set_xlim3d(-45, -40)
-    ax.set_ylim3d(-1, 1)
-    ax.set_zlim3d(0, max(toffset))
-    ax.plot(orbra, orbdec, [(t-ts[0]).total_seconds() for t in orbt], "ro-")
     plt.show()
 
 if __name__ == "__main__":
