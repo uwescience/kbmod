@@ -224,3 +224,12 @@ FROM
 WHERE
   im.bbox3d &&& TL.tline
 ;
+# DOES NOT SLOW THINGS DOWN
+1 0.029 +/- 0.002   0.028 +/- 0.001
+5 0.056 +/- 0.008   0.057 +/- 0.013
+10 0.085 +/- 0.007   0.059 +/- 0.003
+50 0.302 +/- 0.014   0.218 +/- 0.023
+
+# Lets stick with a limited data set for now, to test out Wcs queries
+CREATE TABLE TrajectoryFixed AS (SELECT * FROM Trajectory);
+ALTER TABLE TrajectoryFixed ADD PRIMARY KEY (trajId);
