@@ -10,6 +10,7 @@ import lsst.meas.algorithms as measAlg
 import lsst.daf.persistence as dafPersist
 from lsst.obs.sdss import SdssMapper as Mapper
 from lsst.obs.sdss import convertfpM
+import lsst.afw.display.ds9 as ds9
 
 # In the end we really want these to be methods on a KbmodData class
 def createKey(dataId):
@@ -77,8 +78,6 @@ def convert(dataId):
     sctrl.setAndMask(reduce(lambda x, y, mask=mask: x | mask.getPlaneBitMask(y), bgctrl.ignoredPixelMask, 0x0))
     stdev = afwMath.makeStatistics(im, mask, afwMath.STDEVCLIP, sctrl).getValue(afwMath.STDEVCLIP)
     im /= stdev
-
-    # NOTE TO SELF, BACKGROUND SIGMAS SEEM TOO SMALL
 
     # Additional info
     psf    = butler.get(datasetType="psField", dataId = dataId)
