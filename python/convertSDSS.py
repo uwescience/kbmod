@@ -1,5 +1,6 @@
 import sys
 import re
+import md5
 import numpy as np
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -8,6 +9,22 @@ import lsst.meas.algorithms as measAlg
 import lsst.daf.persistence as dafPersist
 from lsst.obs.sdss import SdssMapper as Mapper
 from lsst.obs.sdss import convertfpM
+
+# In the end we really want these to be methods on a KbmodData class
+def createKey(dataId):
+    run        = dataId["run"]
+    camcol     = dataId["camcol"]
+    field      = dataId["field"]
+    filterName = dataId["filter"]
+    imageId    = int(md5.new(" ".join(map(str, [run, camcol, field, filterName]))).hexdigest(), 16) % 2**(64-1)
+
+def getPath(dataId, root):
+    key        = createKey(dataId)
+    run        = dataId["run"]
+    camcol     = dataId["camcol"]
+    filterName = dataId["filter"]
+    outfile    = os.path.join(root, "kbmod/%d/%d/%s/%d.fits"%(run, camcol, filterName, key)
+    return outfile
 
 def convert(dataId):
     print "# Converting", dataId
@@ -96,7 +113,7 @@ if __name__ == "__main__":
             dId["filter"] = filterName
             args.append(dId)
 
-    if False:
+    if True:
         # 1 by 1; debugging
         map(doit, args)
     else:
