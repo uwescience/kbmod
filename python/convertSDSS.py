@@ -1,13 +1,11 @@
 import sys
 import re
-import md5
 import numpy as np
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.geom as afwGeom
 import lsst.meas.algorithms as measAlg
 import lsst.daf.persistence as dafPersist
-import lsst.daf.base as dafBase
 from lsst.obs.sdss import SdssMapper as Mapper
 from lsst.obs.sdss import convertfpM
 
