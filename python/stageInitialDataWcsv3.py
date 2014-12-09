@@ -3,8 +3,8 @@ import re
 import md5
 import numpy as np
 import time
-#import lsst.daf.persistence as dafPersist
-#from lsst.obs.sdss import SdssMapper as Mapper
+import lsst.daf.persistence as dafPersist
+from lsst.obs.sdss import SdssMapper as Mapper
 
 doWriteSql = True
 doc = """Generate an initial set of test-data for KB-MOD"""
@@ -16,11 +16,11 @@ def doit(args):
     keys   = ["CRPIX1", "CRPIX2", "CD1_1", "CD1_2", "CD2_1", "CD2_2", "CRVAL1", "CRVAL2", "AP_0_0", "AP_0_1", "AP_0_2", "AP_0_3", "AP_0_4", "AP_0_5", "AP_1_0", "AP_1_1", "AP_1_2", "AP_1_3", "AP_1_4", "AP_2_0", "AP_2_1", "AP_2_2", "AP_2_3", "AP_3_0", "AP_3_1", "AP_3_2", "AP_4_0", "AP_4_1", "AP_5_0", "BP_0_0", "BP_0_1", "BP_0_2", "BP_0_3", "BP_0_4", "BP_0_5", "BP_1_0", "BP_1_1", "BP_1_2", "BP_1_3", "BP_1_4", "BP_2_0", "BP_2_1", "BP_2_2", "BP_2_3", "BP_3_0", "BP_3_1", "BP_3_2", "BP_4_0", "BP_4_1", "BP_5_0"]
 
     pid = multiprocessing.current_process().name
-    output = ""
-    badids = ""
+    output = []
+    badids = []
     for arg in args:
         try:
-            dataId     = {"run": int(info[0]), "camcol": int(info[1]), "filter": info[2], "field": int(info[3])}
+            dataId     = {"run": int(arg[0]), "camcol": int(arg[1]), "filter": arg[2], "field": int(arg[3])}
             wcs        = butler.get(datasetType="asTrans", dataId = dataId)
             md         = wcs.getFitsMetadata()
             camcol     = dataId["camcol"]
@@ -31,7 +31,7 @@ def doit(args):
         except:
             badids.append(" ".join(arg)+"\n")
         else:
-            output.append(str(fieldId)+","+",".join([str(md.get(key)) for key in keys])+"\n")
+            output.append(str(imageId)+","+",".join([str(md.get(key)) for key in keys])+"\n")
 
     wfile = "wcs-%s-v3.csv" % (pid)
     wbuff = open(wfile, "w")
@@ -54,9 +54,6 @@ if __name__ == "__main__":
     args = []
     for n in range(njobs):
         args.append(info[n*nper:(n+1)*nper])
-
-    doit(args[0][:3])
-    sys.exit(1)
 
     import multiprocessing
     pool = multiprocessing.Pool(njobs)

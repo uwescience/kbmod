@@ -1,3 +1,4 @@
+import os
 import sys
 import re
 import md5
@@ -17,13 +18,14 @@ def createKey(dataId):
     field      = dataId["field"]
     filterName = dataId["filter"]
     imageId    = int(md5.new(" ".join(map(str, [run, camcol, field, filterName]))).hexdigest(), 16) % 2**(64-1)
+    return imageId
 
 def getPath(dataId, root):
     key        = createKey(dataId)
     run        = dataId["run"]
     camcol     = dataId["camcol"]
     filterName = dataId["filter"]
-    outfile    = os.path.join(root, "kbmod/%d/%d/%s/%d.fits"%(run, camcol, filterName, key)
+    outfile    = os.path.join(root, "kbmod/%d/%d/%s/%d.fits"%(run, camcol, filterName, key))
     return outfile
 
 def convert(dataId):
@@ -76,6 +78,8 @@ def convert(dataId):
     stdev = afwMath.makeStatistics(im, mask, afwMath.STDEVCLIP, sctrl).getValue(afwMath.STDEVCLIP)
     im /= stdev
 
+    # NOTE TO SELF, BACKGROUND SIGMAS SEEM TOO SMALL
+
     # Additional info
     psf    = butler.get(datasetType="psField", dataId = dataId)
     wcs    = butler.get(datasetType="asTrans", dataId = dataId)
@@ -98,7 +102,8 @@ def convert(dataId):
     #cim    = afwImage.ImageF(cim, cBBox)
     #mask   = afwImage.MaskU(mask, cBBox)
 
-    cexp   = afwImage.ExposureF(afwImage.MaskedImageF(cim, mask, var), wcs)
+    cexp   = afwImage.ExposureF(afwImage.MaskedImageF(cim, mask, var))
+    cexp.setWcs(wcs)
     return cexp
  
 if __name__ == "__main__":

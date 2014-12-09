@@ -1,3 +1,4 @@
+import os
 from database import Database
 import pandas as pd
 import numpy as np
@@ -46,15 +47,17 @@ AND
 ;
 """
 
-def makeTar(results):
+def makeRepo(results, root="./"):
     for index, row in results.iterrows():
         dataId = {"run": row["run"], "camcol": row["camcol"], "field": row["positionid"], "filter": row["filter"]}
         cexp = convert(dataId)
-        outfile = getPath(dataId)
+        outfile = getPath(dataId, root)
+        if not os.path.isdir(os.path.dirname(outfile)):
+           os.makedirs(os.path.dirname(outfile))
         cexp.writeFits(outfile)
 
 
 if __name__ == "__main__":
     db = Database(doLoadUdf=False)
     results = db.db.query(sql)
-    import pdb; pdb.set_trace()
+    makeRepo(results)
