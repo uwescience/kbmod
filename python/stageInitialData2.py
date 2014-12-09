@@ -101,7 +101,7 @@ def doit(args):
 
     psf    = butler.get(datasetType="psField", dataId = dataId)
     wcs    = butler.get(datasetType="asTrans", dataId = dataId)
-
+    import pdb; pdb.set_trace()
     # Image convolved with the Psf, i.e. maximum point source likelihood image
     cim    = afwImage.ImageF(im, True)
     afwMath.convolve(cim, im, psf.getKernel(), True)
@@ -176,7 +176,8 @@ if __name__ == "__main__":
             dId["filter"] = filterName
             args.append(dId)
 
-    if False:
+    args = [{"run": 1040, "camcol": 6, "field": 125, "filter": "r"},]
+    if True:
         # 1 by 1; debugging
         map(doit, args)
     else:
